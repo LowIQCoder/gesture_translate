@@ -30,5 +30,6 @@ pip install -r requirements.txt
 Run it
 
 ```
-python main.py
+python src\main.py
 ```
+
