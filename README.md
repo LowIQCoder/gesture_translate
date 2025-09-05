@@ -1,5 +1,11 @@
 # Gesture translate
 
+## Prequests
+
+Python 3.9
+
+**MAKE SURE THAT ONLY ASCII CHARACTERS PRESENTED IN PATH**
+
 ## Usage
 
 Clone repo 
@@ -8,8 +14,6 @@ Clone repo
 git clone https://github.com/LowIQCoder/gesture_translate
 cd gesture_translate
 ```
-
-**MAKE SURE THAT ONLY ASCII CHARACTERS PRESENTED IN PATH**
 
 Create virtual environment and activate it
 
