@@ -9,3 +9,5 @@ tqdm
 mlflow
 mediapipe
 kagglehub
+onnx
+onnxscript

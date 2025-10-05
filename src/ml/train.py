@@ -17,8 +17,20 @@ def train(
     train_loader,
     val_loader,
     epochs,
-    device
+    device,
+    checkpoint
 ) -> None:
+    best_acc = 0
+
+    if checkpoint:
+        try:
+            model.load_state_dict(torch.load(checkpoint))
+            with open("./data/models/metrics.txt", "r") as f:
+                best_acc = float(f.read().split()[-1])
+            print(f"Loaded {checkpoint} with accuracy {best_acc}")
+        except:
+            print(f"No checkpoint found at {checkpoint}. Ignoring")
+
     mlflow.set_tracking_uri("http://127.0.0.1:5000")
     mlflow.enable_system_metrics_logging()
     mlflow.set_system_metrics_sampling_interval(1)
@@ -102,6 +114,12 @@ def train(
             val_acc = correct_val / total_val
             val_f1 = f1_score(all_labels_val, all_preds_val, average="macro")
 
+            if val_acc > best_acc:
+                print(f"Saving best model Accuracy: {val_acc}")
+                torch.save(model.state_dict(), checkpoint)
+                with open("./data/models/metrics.txt", "w") as f:
+                    f.write(f"Accuracy: {val_acc}")
+
             print(
                 f"Epoch {epoch+1}/{epochs} | "
                 f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
@@ -118,6 +136,10 @@ def train(
                 "val_f1": val_f1,
             }, step=epoch)
 
+        example_inputs = torch.tensor(torch.randn(1, 84),).to(device)
+        onnx_program = torch.onnx.export(model, example_inputs, dynamo=True)
+        onnx_program.save("./data/models/best_model.onnx")
+
 if __name__ == "__main__":
     train_loader, val_loader = get_dataloaders("./data/processed/hand_landmarks_features.csv", 0.8, 256)
 
@@ -131,6 +153,7 @@ if __name__ == "__main__":
         loss_fn=loss,
         train_loader=train_loader,
         val_loader=val_loader,
-        epochs=100,
-        device='cuda'
+        epochs=5,
+        device='cuda',
+        checkpoint="./data/models/best_model.pth"
     )
