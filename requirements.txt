@@ -1,0 +1,11 @@
+--find-links https://download.pytorch.org/whl/cu129
+
+pandas
+torch
+torchvision
+scikit-learn
+psutil
+tqdm
+mlflow
+mediapipe
+kagglehub
