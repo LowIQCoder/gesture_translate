@@ -1,6 +1,7 @@
 import kagglehub
 from os import PathLike
 import os
+import json
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -11,18 +12,20 @@ import cv2
 import mediapipe as mp
 
 def get_kaggle_dataset(
-        path: str | PathLike
+        dataset: str
     ) -> str:
     """Downloads dataset from KaggleHub
+
+    Note:
+        For correct work of this function make shure that **KAGGLEHUB_CACHE** envoirement is set to "./data/raw/"
     
     Args:
-        path (str, PathLike): Path to download to
+        path (str): Dataset handle on kaggle
 
     Returns:
         str: Path datased downloaded to
     """
-    os.environ["KAGGLEHUB_CACHE"] = os.path.abspath(path)
-    dataset_path = kagglehub.dataset_download("harshvardhan21/sign-language-detection-using-images")
+    dataset_path = kagglehub.dataset_download(dataset)
     print(f"Dataset downloaded to: {os.path.abspath(dataset_path)}")
     return os.path.abspath(dataset_path)
 
@@ -57,11 +60,12 @@ def landmarks_to_features(detection_results):
 
     return features
 
-def preprocess_image(image_path, debug=False):
+def preprocess_image(image_path, frame=-1, debug=False):
     """Preprocess the image for hand tracking and return landmark features.
 
     Args:
         image_path (str): The path to the image file.
+        frame (int), optional: If debig is set loggs files with frame number
         debug (bool, optional): Whether to display debug info. Defaults to False.
 
     Raises:
@@ -74,10 +78,13 @@ def preprocess_image(image_path, debug=False):
     mp_drawing = mp.solutions.drawing_utils
     mp_drawing_styles = mp.solutions.drawing_styles
 
-    image = cv2.imread(image_path)
-    if image is None:
-        raise ValueError(f"Image not found at {image_path}")
-
+    if isinstance(image_path, str):
+        image = cv2.imread(image)
+        if image is None:
+            raise ValueError(f"Image not found at {image}")
+    else:
+        image = image_path
+        
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     with mp_hands.Hands(
@@ -100,10 +107,23 @@ def preprocess_image(image_path, debug=False):
                         mp_drawing_styles.get_default_hand_landmarks_style(),
                         mp_drawing_styles.get_default_hand_connections_style()
                     )
-            cv2.imwrite("./annotated_image.png", annotated_image)
+            cv2.imwrite(f"./data/imgs/processed_{frame:03}.png", annotated_image)
 
     return features
 
+def preprocess_video(video_path, debug=False):
+    video = cv2.VideoCapture(video_path)
+    video.set(cv2.CAP_PROP_FPS, 25)
+    features = []
+    i = 0
+    while True:
+        ret, frame = video.read()
+        if not ret:
+            break
+        features.append(preprocess_image(frame, frame=i, debug=debug))
+        i += 1
+    video.release()
+    return features
 
 def preprocess_dataset(
         dataset_path: str | PathLike,
@@ -115,34 +135,24 @@ def preprocess_dataset(
         dataset_path (str | PathLike): The path to the dataset.
         out_path (str | PathLike): The path to save the processed features.
     """
-    LABELS = [
-        '1', '2', '3', '4', '5', '6', '7', '8', '9',
-        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 
-        'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-        'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-    ]
+    with open(f"{dataset_path}/WLASL_v0.3.json", "r") as f:
+        words = json.load(f)
 
-    all_features = []
-
-    for label in LABELS: 
-        for i in tqdm(range(1200), desc=f"Label {label}"):
+    df = pd.DataFrame(columns=["features", "label"])
+    for word in tqdm(words):
+        for inst in word['instances']:
             try:
-                features = preprocess_image(f"{dataset_path}/data/{label}/{i}.jpg")
-                feature_with_label = features.tolist() + [ord(label) - 49]
-                all_features.append(feature_with_label)
-            except Exception as e:
-                print(f"Skipping {label}/{i}.jpg: {e}")
+                features = preprocess_video(f"{dataset_path}/videos/{inst['video_id']}.mp4")
+            except:
                 continue
-
-    all_features = np.array(all_features, dtype=np.float32)
-    columns = [f"f{j}" for j in range(84)] + ["label"]
-    features_df = pd.DataFrame(all_features, columns=columns)
-
-    features_df.to_csv(f"{out_path}/hand_landmarks_features.csv", index=False)
-
-    print("Dataset shape:", features_df.shape)
+            new_row = pd.DataFrame({"features": features, "label": word['gloss']})
+            df = pd.concat([df, new_row])
+    df.to_csv(f"{out_path}/video_landmarks.csv")
 
 if __name__ == "__main__":
-    dataset_path = get_kaggle_dataset("./data/raw/")
-    out_path = "./data/processed"
-    preprocess_dataset(dataset_path, out_path)
+    # dataset_path = get_kaggle_dataset("risangbaskoro/wlasl-processed")
+    # out_path = "./data/processed"
+    # preprocess_dataset(dataset_path, out_path)
+    dataset_path = get_kaggle_dataset("risangbaskoro/wlasl-processed")
+    features = preprocess_video(dataset_path + "/videos/69241.mp4", True)
+    print(features)

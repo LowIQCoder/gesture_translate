@@ -141,7 +141,7 @@ def train(
         onnx_program.save("./data/models/best_model.onnx")
 
 if __name__ == "__main__":
-    train_loader, val_loader = get_dataloaders("./data/processed/hand_landmarks_features.csv", 0.8, 256)
+    train_loader, val_loader = get_dataloaders("./data/processed/hand_landmarks_features.csv", 0.8, 64)
 
     model = Net()
     optimizer = optim.Adam(model.parameters())
