@@ -64,7 +64,7 @@ This dataset was chosen for its large volume of curated image samples, which is 
 
 ## 🧪 Usage
 
-###📝 Data Preprocessing
+### 📝 Data Preprocessing
 
 For correct work you must set `KAGGLEHUB_CACHE`
 ```bash
