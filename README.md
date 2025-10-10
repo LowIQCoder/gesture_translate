@@ -9,6 +9,7 @@ Optimized application for automatic translating from **(ASL)** to English Langua
 * [🚀 Key Features](#-key-features)
 * [🌍 Dataset & Preprocessing](#-dataset--preprocessing)
 * [⚙️ Installation](#️-installation)
+* [🧪 Usage](#-usage)
 * [🗺️ Roadmap](#️-roadmap)
 * [📈 Methodology](#-methodology)
 * [📊 Evaluation Metrics](#-evaluation-metrics)
@@ -58,6 +59,62 @@ This dataset was chosen for its large volume of curated image samples, which is 
    ```bash
    pip install -r requirements.txt
    ```
+
+---
+
+## 🧪 Usage
+
+### 📝 Data Preprocessing
+
+For correct work you must set `KAGGLEHUB_CACHE`
+```bash
+export KAGGLEHUB_CACHE=./data/raw
+```
+
+If you want to look at model training process first of all get and preprocess data.
+
+```bash
+python -m data.preprocess
+```
+
+You will see 2 new folders
+
+```
+. 
+└─── data
+    └─── raw         # Here you will have dataset from kaggle
+    └─── processed   # Here tou will have preprocessed features
+
+```
+
+### 🏋️‍♂️ Model Training
+
+Now with ready data you can train model
+
+To track model metrics we use [MLFlow](https://mlflow.org/). To do so, run tracking server with docker
+
+```bash
+docker compose up --build
+```
+
+With MLFlow running, launch training script
+
+```bash
+python -m src.ml.train
+```
+
+Now access MLFlow UI on http://localhost:5000 to see model training process 
+
+### 🚗 App Usage
+
+With trained model you can lauch our app
+
+To do so simply run our application
+```bash
+python -m src.backend.app
+```
+
+And show somethig!
 
 ---
 

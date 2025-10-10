@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch import optim
 from sklearn.metrics import f1_score
+import os
 
 from tqdm import tqdm
 
@@ -19,9 +20,11 @@ def train(
     epochs,
     device,
     checkpoint
-) -> None:
-    best_acc = 0
+) -> None:    
+    if not os.path.exists("./data/models/"):
+        os.makedirs("./data/models/")
 
+    best_acc = 0
     if checkpoint:
         try:
             model.load_state_dict(torch.load(checkpoint))
@@ -147,13 +150,15 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters())
     loss = nn.CrossEntropyLoss()
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     train(
         model=model,
         optimizer=optimizer,
         loss_fn=loss,
         train_loader=train_loader,
         val_loader=val_loader,
-        epochs=5,
-        device='cuda',
+        epochs=10,
+        device=device,
         checkpoint="./data/models/best_model.pth"
     )
