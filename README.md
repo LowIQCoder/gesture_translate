@@ -9,6 +9,7 @@ Optimized application for automatic translating from **(ASL)** to English Langua
 * [🚀 Key Features](#-key-features)
 * [🌍 Dataset & Preprocessing](#-dataset--preprocessing)
 * [⚙️ Installation](#️-installation)
+* [🧪 Usage](#-usage)
 * [🗺️ Roadmap](#️-roadmap)
 * [📈 Methodology](#-methodology)
 * [📊 Evaluation Metrics](#-evaluation-metrics)
@@ -63,7 +64,7 @@ This dataset was chosen for its large volume of curated image samples, which is 
 
 ## 🧪 Usage
 
-### Data Preprocessing
+###📝 Data Preprocessing
 
 For correct work you must set `KAGGLEHUB_CACHE`
 ```bash
@@ -86,7 +87,7 @@ You will see 2 new folders
 
 ```
 
-### Model Training
+### 🏋️‍♂️ Model Training
 
 Now with ready data you can train model
 
@@ -104,7 +105,7 @@ python -m src.ml.train
 
 Now access MLFlow UI on http://localhost:5000 to see model training process 
 
-### App Usage
+### 🚗 App Usage
 
 With trained model you can lauch our app
 
