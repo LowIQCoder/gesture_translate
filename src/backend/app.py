@@ -1,16 +1,20 @@
+import time
+
 import cv2
 import mediapipe as mp
-import time
-from logger import setup_logger
-from model import load_model, predict_from_results
-from gui import GestureGUI
 
-logger = setup_logger("MainApp")
+from src.frontend.gui import GestureGUI
+from data.features import landmarks_to_features
+
+import onnxruntime as ort
+import torch
+import numpy as np
 
 def main():
     """Main function"""
     # Инициализация
-    model, device = load_model("../ml/best_model.pth")
+    session = ort.InferenceSession("./data/models/best_model.onnx")
+    
     cam = cv2.VideoCapture(0)
     gui = GestureGUI()
     
@@ -28,9 +32,7 @@ def main():
     start_time = time.time()
     
     try:
-        while True:
-            frame_start = time.time()
-            
+        while True:          
             # Захват кадра
             ret, frame = cam.read()
             if not ret:
@@ -47,12 +49,23 @@ def main():
             # Предсказание
             inference_start = time.time()
             if results.multi_hand_landmarks:
-                pred_label, probs = predict_from_results(model, device, results)
-                confidence = max(probs) * 100
+                features = landmarks_to_features(results).reshape((1, 84))
+                
+                lables = session.run(None, {'x': features})[0]
+                
+                probs = torch.softmax(torch.tensor(lables, dtype=torch.float32), dim=1).squeeze()
+                
+                pred_label = torch.argmax(probs).item()
+                
+                confidence = probs[pred_label].item() * 100
+
+                # print("Logits:", lables)
+                # print("Pred label:", pred_label)
+                # print("Probs:", probs)
                 
                 # Топ-3 предсказания
-                top_indices = sorted(range(len(probs)), key=lambda i: probs[i], reverse=True)[:3]
-                embeddings = [(chr(idx + 49), probs[idx]) for idx in top_indices]
+                top_indices = torch.topk(probs, 3).indices.tolist()
+                embeddings = [(chr(idx + 49), probs[idx].item()) for idx in top_indices]
                 
                 gui.update_results(pred_label, confidence, embeddings)
             else:
@@ -84,8 +97,7 @@ def main():
             
             # Проверка на закрытие
             if not gui.root.winfo_exists():
-                break
-                
+                break    
     finally:
         cam.release()
         cv2.destroyAllWindows()

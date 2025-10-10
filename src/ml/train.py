@@ -147,13 +147,15 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters())
     loss = nn.CrossEntropyLoss()
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     train(
         model=model,
         optimizer=optimizer,
         loss_fn=loss,
         train_loader=train_loader,
         val_loader=val_loader,
-        epochs=5,
-        device='cuda',
+        epochs=2,
+        device=device,
         checkpoint="./data/models/best_model.pth"
     )
