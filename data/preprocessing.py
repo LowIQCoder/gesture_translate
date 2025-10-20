@@ -62,44 +62,52 @@ def landmarks_to_features(detection_results):
 
     return features
 
-def preprocess_image(image_path, frame=-1, debug=False):
-    """Preprocess the image for hand tracking and return landmark features.
+def load_frame(image_path_or_frame):
+    """Load and convert an image/frame to RGB for processing.
 
     Args:
-        image_path (str): The path to the image file.
-        frame (int), optional: If debig is set loggs files with frame number
-        debug (bool, optional): Whether to display debug info. Defaults to False.
-
-    Raises:
-        ValueError: If the image cannot be loaded.
+        image_path_or_frame (str | np.ndarray): Path to image or a frame array.
 
     Returns:
-        np.ndarray: The processed feature vector of size (84,).
+        np.ndarray: RGB image.
+    """
+    if isinstance(image_path_or_frame, str):
+        image = cv2.imread(image_path_or_frame)
+        if image is None:
+            raise ValueError(f"Image not found at {image_path_or_frame}")
+    else:
+        image = image_path_or_frame
+
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    return image_rgb, image  # Return original for annotation if needed
+
+
+def preprocess_frame(frame_rgb, debug=False, orig_image=None, frame_idx=None):
+    """Process a frame for hand landmarks and optionally save debug image.
+
+    Args:
+        frame_rgb (np.ndarray): RGB frame.
+        debug (bool, optional): Whether to save annotated debug image.
+        orig_image (np.ndarray, optional): Original BGR frame for debugging.
+        frame_idx (int, optional): Frame index for saving debug image.
+
+    Returns:
+        np.ndarray: Feature vector (84,).
     """
     mp_hands = mp.solutions.hands
     mp_drawing = mp.solutions.drawing_utils
     mp_drawing_styles = mp.solutions.drawing_styles
-
-    if isinstance(image_path, str):
-        image = cv2.imread(image)
-        if image is None:
-            raise ValueError(f"Image not found at {image}")
-    else:
-        image = image_path
-        
-    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     with mp_hands.Hands(
         static_image_mode=True,
         max_num_hands=2,
         min_detection_confidence=0.5
     ) as hands:
-        results = hands.process(image_rgb)
-
+        results = hands.process(frame_rgb)
         features = landmarks_to_features(results)
 
-        if debug:
-            annotated_image = image.copy()
+        if debug and orig_image is not None:
+            annotated_image = orig_image.copy()
             if results.multi_hand_landmarks:
                 for hand_landmarks in results.multi_hand_landmarks:
                     mp_drawing.draw_landmarks(
@@ -109,9 +117,10 @@ def preprocess_image(image_path, frame=-1, debug=False):
                         mp_drawing_styles.get_default_hand_landmarks_style(),
                         mp_drawing_styles.get_default_hand_connections_style()
                     )
-            cv2.imwrite(f"./data/imgs/processed_{frame:03}.png", annotated_image)
+            cv2.imwrite(f"./data/imgs/processed_{frame_idx:03}.png", annotated_image)
 
     return features
+
 
 def preprocess_video(video_path, debug=False):
     video = cv2.VideoCapture(video_path)
@@ -122,10 +131,12 @@ def preprocess_video(video_path, debug=False):
         ret, frame = video.read()
         if not ret:
             break
-        features.append(preprocess_image(frame, frame=i, debug=debug))
+        frame_rgb, orig = load_frame(frame)
+        features.append(preprocess_frame(frame_rgb, debug=debug, orig_image=orig, frame_idx=i))
         i += 1
     video.release()
     return features
+
 
 def preprocess_dataset(
         dataset_path: str | PathLike,
