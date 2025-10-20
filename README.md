@@ -74,7 +74,7 @@ export KAGGLEHUB_CACHE=./data/raw
 If you want to look at model training process first of all get and preprocess data.
 
 ```bash
-python -m data.preprocess
+python -m data.preprocessing
 ```
 
 You will see 2 new folders
