@@ -48,7 +48,7 @@ This dataset was chosen for its large volume of curated image samples, which is 
    git clone https://github.com/LowIQCoder/gesture_translate.git
    cd gesture_translate
    ```
-2. Create and activate **Python 3.9** virtual environment:
+2. Create and activate **Python 3.12** virtual environment:
 
    ```bash
    python -m venv .venv
@@ -74,7 +74,7 @@ export KAGGLEHUB_CACHE=./data/raw
 If you want to look at model training process first of all get and preprocess data.
 
 ```bash
-python -m data.preprocess
+python -m data.preprocessing
 ```
 
 You will see 2 new folders
