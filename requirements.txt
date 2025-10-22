@@ -7,7 +7,6 @@ scikit-learn
 psutil
 tqdm
 mlflow
-mediapipe
-kagglehub
+mediapipe==0.10.13
 onnx
 onnxscript
