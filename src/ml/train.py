@@ -19,23 +19,23 @@ def train(
     val_loader,
     epochs,
     device,
-    checkpoint
+    checkpoint_path
 ) -> None:    
     if not os.path.exists("./data/models/"):
         os.makedirs("./data/models/")
 
     best_acc = 0
-    if checkpoint:
+    if checkpoint_path:
         try:
-            model.load_state_dict(torch.load(checkpoint))
-            with open("./data/models/metrics.txt", "r") as f:
-                best_acc = float(f.read().split()[-1])
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            best_acc = checkpoint['accuracy']
             print(f"Loaded {checkpoint} with accuracy {best_acc}")
         except:
             print(f"No checkpoint found at {checkpoint}. Ignoring")
 
     mlflow.set_tracking_uri("http://127.0.0.1:5000")
-    mlflow.enable_system_metrics_logging()
     mlflow.set_system_metrics_sampling_interval(1)
     
     if mlflow.active_run():
@@ -119,9 +119,12 @@ def train(
 
             if val_acc > best_acc:
                 print(f"Saving best model Accuracy: {val_acc}")
-                torch.save(model.state_dict(), checkpoint)
-                with open("./data/models/metrics.txt", "w") as f:
-                    f.write(f"Accuracy: {val_acc}")
+                best_acc = val_acc
+                torch.save({
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "accuracy": val_acc
+                }, checkpoint_path)
 
             print(
                 f"Epoch {epoch+1}/{epochs} | "
