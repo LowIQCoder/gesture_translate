@@ -24,13 +24,13 @@ class LandmarkTransformerClassifier(nn.Module):
     def __init__(
         self,
         num_landmarks=84,
-        num_classes=400,
+        num_classes=1000,
         emb_dim=128,
         num_heads=4,
         num_layers=4,
         dim_ff=512,
         dropout=0.1,
-        max_seq_len=512,
+        max_seq_len=256,
         pooling='mean'
     ):
         super().__init__()
@@ -98,7 +98,6 @@ if __name__ == "__main__":
     )
 
     # Dummy data
-    x = torch.randn(batch, seq_len, num_landmarks)
-    mask = torch.zeros(batch, seq_len, dtype=torch.bool)  # no padding
-    logits = model(x, mask)  # (batch, num_classes)
+    x = torch.randn(batch, seq_len, num_landmarks) # no padding
+    logits = model(x)  # (batch, num_classes)
     print("Logits:", logits.shape)  # (8, 400)

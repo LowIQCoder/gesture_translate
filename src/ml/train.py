@@ -10,7 +10,7 @@ from torchinfo import summary
 import mlflow
 
 from src.ml.dataloaders import get_dataloaders
-from src.ml.model import Net
+from src.ml.model import LandmarkTransformerClassifier
 
 def train(
     model: nn.Module,
@@ -51,9 +51,9 @@ def train(
             with open("./data/model_summary.txt", "w") as f:
                 f.write(str(summary(model, input_size=(1, 1, 28, 28))))
             
-            print(f"Loaded {checkpoint} with accuracy {best_acc}")
+            print(f"Loaded {checkpoint_path} with accuracy {best_acc}")
         except: 
-            print(f"No checkpoint found at {checkpoint}. Ignoring")
+            print(f"No checkpoint found at {checkpoint_path}. Ignoring")
     model.to(device)
 
     # Setting mlflow up
@@ -183,9 +183,9 @@ def train(
         onnx_program.save("./data/models/best_model.onnx")
 
 if __name__ == "__main__":
-    train_loader, val_loader = get_dataloaders("./data/processed/hand_landmarks_features.csv", 0.8, 256)
+    train_loader, val_loader = get_dataloaders("./data/processed/features.parquet", 0.8, 64)
 
-    model = Net()
+    model = LandmarkTransformerClassifier()
     optimizer = optim.Adam(model.parameters())
     loss = nn.CrossEntropyLoss()
 
@@ -199,5 +199,5 @@ if __name__ == "__main__":
         val_loader=val_loader,
         epochs=10,
         device=device,
-        checkpoint="./data/models/best_model.pth"
+        checkpoint_path="./data/models/best_model.pth"
     )
