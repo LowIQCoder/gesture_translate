@@ -1,6 +1,7 @@
 import kagglehub
 from os import PathLike
 import os
+import json
 
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -86,34 +87,50 @@ def preprocess_dataset(
         dataset_path (str | PathLike): The path to the dataset.
         out_path (str | PathLike): The path to save the processed features.
     """
-    LABELS = [
-        '1', '2', '3', '4', '5', '6', '7', '8', '9',
-        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 
-        'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-        'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-    ]
-
-    all_features = []
-
-    for label in LABELS: 
-        for i in tqdm(range(1200), desc=f"Label {label}"):
-            try:
-                features = preprocess_image(f"{dataset_path}/data/{label}/{i}.jpg")
-                feature_with_label = features.tolist() + [ord(label) - 49]
-                all_features.append(feature_with_label)
-            except Exception as e:
-                print(f"Skipping {label}/{i}.jpg: {e}")
-                continue
-
-    all_features = np.array(all_features, dtype=np.float32)
-    columns = [f"f{j}" for j in range(84)] + ["label"]
-    features_df = pd.DataFrame(all_features, columns=columns)
-
-    features_df.to_csv(f"{out_path}/hand_landmarks_features.csv", index=False)
-
-    print("Dataset shape:", features_df.shape)
+    df = pd.DataFrame(columns=["features", "key"])
+    with open(dataset_path + "/slovo_mediapipe.json", "r") as f:
+        data = json.load(f)
+        
+        for key in tqdm(list(data.keys())):
+            all_features = list()
+            for frame in data[key]:
+                features = np.zeros(84, dtype=np.float16)
+                try:
+                    h1_land = frame['hand 1']
+                    f = list()
+                    for a in h1_land:
+                        f.append(a['x'])
+                        f.append(a['y'])
+                    features[0: 42] = f
+                except:
+                    pass
+                try:
+                    h2_land = frame['hand 2']
+                    f = list()
+                    for a in h2_land:
+                        f.append(a['x'])
+                        f.append(a['y'])
+                    features[42: 84] = f
+                except:
+                    pass
+                all_features.append(features)
+            df.loc[len(df)] = [all_features, key]
+            
+    lab = pd.read_csv(dataset_path + "/annotations.csv", sep="\t")
+    df = pd.merge(df, lab, left_on="key", right_on="attachment_id")
+    
+    lab2id = {s:i for i, s in enumerate(lab['text'].unique())}
+    
+    df['label'] = df['text'].apply(lambda x: lab2id[x])
+    df = df[['features', 'label']]
+    
+    lab2id_df = pd.DataFrame([list(lab2id.keys()), list(lab2id.values())]).transpose()
+    lab2id_df.to_csv(out_path + '/labels.csv')
+    df.to_csv(out_path + '/features.csv')
+    print(df.head())
 
 if __name__ == "__main__":
-    dataset_path = get_kaggle_dataset("./data/raw/")
+    # dataset_path = get_kaggle_dataset("./data/raw")
+    dataset_path = "./data/raw"
     out_path = "./data/processed"
     preprocess_dataset(dataset_path, out_path)

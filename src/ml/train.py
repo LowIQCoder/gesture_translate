@@ -5,6 +5,7 @@ from sklearn.metrics import f1_score
 import os
 
 from tqdm import tqdm
+from torchinfo import summary
 
 import mlflow
 
@@ -12,30 +13,51 @@ from src.ml.dataloaders import get_dataloaders
 from src.ml.model import Net
 
 def train(
-    model,
-    optimizer,
-    loss_fn,
-    train_loader,
-    val_loader,
-    epochs,
-    device,
-    checkpoint
+    model: nn.Module,
+    optimizer: optim.Optimizer,
+    loss_fn: nn.Module,
+    train_loader: torch.utils.data.DataLoader,
+    val_loader: torch.utils.data.DataLoader,
+    epochs: int,
+    device: torch.device = 'cpu',
+    checkpoint_path: os.PathLike = None
 ) -> None:    
+    """Training loop with logging in to MlFlow
+
+    Args:
+        model (nn.Module): Model to train
+        optimizer (optim.Optimizer): Used optimizer
+        loss_fn (nn.Module): Losss function
+        train_loader (torch.utils.data.DataLoader): Train loader
+        val_loader (torch.utils.data.DataLoader): Test loader
+        epochs (int): Number of epochs
+        device (torch.device, optional): Device to train on. Defaults to 'cpu'.
+        checkpoint_path (os.PathLike, optional): Path to last model checkpoint. Defaults to None.
+    """
+    # For storing model checkpoints
     if not os.path.exists("./data/models/"):
         os.makedirs("./data/models/")
 
+    # Loading checkpoint
     best_acc = 0
-    if checkpoint:
+    if checkpoint_path:
         try:
-            model.load_state_dict(torch.load(checkpoint))
-            with open("./data/models/metrics.txt", "r") as f:
-                best_acc = float(f.read().split()[-1])
+            checkpoint = torch.load(checkpoint_path)
+            
+            best_acc = checkpoint['accuracy']
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer.load_state_dict(checkpoint['optim_state_dict'])
+            
+            with open("./data/model_summary.txt", "w") as f:
+                f.write(str(summary(model, input_size=(1, 1, 28, 28))))
+            
             print(f"Loaded {checkpoint} with accuracy {best_acc}")
-        except:
+        except: 
             print(f"No checkpoint found at {checkpoint}. Ignoring")
+    model.to(device)
 
+    # Setting mlflow up
     mlflow.set_tracking_uri("http://127.0.0.1:5000")
-    mlflow.enable_system_metrics_logging()
     mlflow.set_system_metrics_sampling_interval(1)
     
     if mlflow.active_run():
@@ -43,8 +65,8 @@ def train(
 
     mlflow.set_experiment("Model Training")
 
-    model.to(device)
     with mlflow.start_run(log_system_metrics=True):
+        # Logging params to MLFlow
         mlflow.log_params({
             "optimizer": optimizer.__class__.__name__,
             "loss_fn": loss_fn.__class__.__name__,
@@ -61,8 +83,8 @@ def train(
             all_preds_train = []
             all_labels_train = []
 
-            pbar = tqdm(train_loader, desc=f"Epoch [{epoch+1}/{epochs}] Training", leave=False)
-            for features, labels in pbar:
+            # Default training loop
+            for features, labels in (pbar := tqdm(train_loader, desc=f"Epoch [{epoch+1}/{epochs}] Training", leave=False)):
                 labels, features = labels.to(device), features.to(device)
 
                 optimizer.zero_grad()
@@ -87,6 +109,7 @@ def train(
             train_acc = correct_train / total_train
             train_f1 = f1_score(all_labels_train, all_preds_train, average="macro")
 
+            # Evaluating model
             model.eval()
             val_loss = 0.0
             correct_val = 0
@@ -94,9 +117,9 @@ def train(
             all_preds_val = []
             all_labels_val = []
 
+            # Default validation loop
             with torch.inference_mode():
-                pbar_val = tqdm(val_loader, desc=f"Epoch [{epoch+1}/{epochs}] Validation", leave=False)
-                for features, labels in pbar_val:
+                for features, labels in (pbar_val := tqdm(val_loader, desc=f"Epoch [{epoch+1}/{epochs}] Validation", leave=False)):
                     labels, features = labels.to(device), features.to(device)
                     outputs = model(features)
                     loss = loss_fn(outputs, labels)
@@ -117,12 +140,19 @@ def train(
             val_acc = correct_val / total_val
             val_f1 = f1_score(all_labels_val, all_preds_val, average="macro")
 
+            # Updating model checkpoint
             if val_acc > best_acc:
-                print(f"Saving best model Accuracy: {val_acc}")
-                torch.save(model.state_dict(), checkpoint)
-                with open("./data/models/metrics.txt", "w") as f:
-                    f.write(f"Accuracy: {val_acc}")
+                best_acc = val_acc
+                
+                torch.save({
+                    "model_state_dict": model.state_dict(),
+                    "optim_state_dict": optimizer.state_dict(),
+                    "accuracy": val_acc
+                }, checkpoint)
+                    
+                print(f"Saved new best model with accuracy: {val_acc}")
 
+            # Logging metrics
             print(
                 f"Epoch {epoch+1}/{epochs} | "
                 f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
@@ -130,6 +160,7 @@ def train(
                 f"Train F1: {train_f1:.4f} | Val F1: {val_f1:.4f}"
             )
 
+            # Logging metrics to mlflow
             mlflow.log_metrics({
                 "train_loss": avg_train_loss,
                 "train_acc": train_acc,
@@ -138,7 +169,15 @@ def train(
                 "val_acc": val_acc,
                 "val_f1": val_f1,
             }, step=epoch)
+            
+            mlflow.log_artifact("./data/model_summary.txt")
+            
+            model_info = mlflow.pytorch.log_model(model, name="model")
 
+        # Saving best model
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        
         example_inputs = torch.tensor(torch.randn(1, 84),).to(device)
         onnx_program = torch.onnx.export(model, example_inputs, dynamo=True)
         onnx_program.save("./data/models/best_model.onnx")
