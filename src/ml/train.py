@@ -148,7 +148,7 @@ def train(
                     "model_state_dict": model.state_dict(),
                     "optim_state_dict": optimizer.state_dict(),
                     "accuracy": val_acc
-                }, checkpoint)
+                }, checkpoint_path)
                     
                 print(f"Saved new best model with accuracy: {val_acc}")
 
@@ -169,9 +169,7 @@ def train(
                 "val_acc": val_acc,
                 "val_f1": val_f1,
             }, step=epoch)
-            
-            mlflow.log_artifact("./data/model_summary.txt")
-            
+
             model_info = mlflow.pytorch.log_model(model, name="model")
 
         # Saving best model
@@ -186,7 +184,7 @@ if __name__ == "__main__":
     train_loader, val_loader = get_dataloaders("./data/processed/features.parquet", 0.8, 64)
 
     model = LandmarkTransformerClassifier()
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
     loss = nn.CrossEntropyLoss()
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

@@ -12,6 +12,7 @@ class GestureDataset(Dataset):
     def __init__(self, parquet_path: str):
         self.df = pd.read_parquet(parquet_path)
         self.df["features"] = self.df["features"].apply(lambda x: [list(f) for f in x])
+        self.df = self.df[self.df["features"].apply(lambda x: len(x) > 0)].reset_index(drop=True)
 
     def __len__(self):
         return len(self.df)
@@ -28,7 +29,7 @@ class GestureDataset(Dataset):
 def collate_fn(batch):
     # (tensor, label)
     sequences, labels = zip(*batch)
-    padded = pad_sequence(sequences, batch_first=True)  # (batch, max_seq_len, 84)
+    padded = pad_sequence(sequences, batch_first=True, padding_value=1002)  # (batch, max_seq_len, 84)
     labels = torch.tensor(labels, dtype=torch.long)
     return padded, labels
 

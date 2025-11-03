@@ -24,10 +24,11 @@ class LandmarkTransformerClassifier(nn.Module):
     def __init__(
         self,
         num_landmarks=84,
-        num_classes=1000,
+        num_classes=1001,
         emb_dim=128,
         num_heads=4,
-        num_layers=4,
+        num_encoders=4,
+        num_decoders=5,
         dim_ff=512,
         dropout=0.1,
         max_seq_len=256,
@@ -52,12 +53,25 @@ class LandmarkTransformerClassifier(nn.Module):
             activation="relu",
             batch_first=True,
         )
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_encoders)
+
+        # Transformer decoder
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=emb_dim,
+            nhead=num_heads,
+            dim_feedforward=dim_ff,
+            dropout=dropout,
+            activation="relu",
+            batch_first=True
+        )
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_decoders)
+
+        # Learnable class token (acts as decoder query)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, emb_dim))
 
         # Classification head
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(emb_dim, num_classes)
-        self.cls_token = None
 
     def forward(self, x, mask=None):
         """
@@ -67,18 +81,17 @@ class LandmarkTransformerClassifier(nn.Module):
         b, seq, _ = x.shape
         x = self.input_proj(x)         # (b, seq, emb)
         x = self.pos_encoder(x)
-        x = self.encoder(x, src_key_padding_mask=mask)  # (b, seq, emb)
+        memory = self.encoder(x, src_key_padding_mask=mask)  # (b, seq, emb)
+    
+        cls_query = self.cls_token.expand(b, -1, -1)  # (b, 1, emb)
+        tgt = cls_query
 
-        # Pooling
-        if mask is not None:
-            # compute mean excluding masked positions
-            valid = (~mask).float().unsqueeze(-1)
-            x = (x * valid).sum(1) / valid.sum(1).clamp(min=1e-9)
-        else:
-            x = x.mean(dim=1)
+        # Decode
+        decoded = self.decoder(tgt=tgt, memory=memory, memory_key_padding_mask=mask)  # (b, 1, emb)
+        decoded = decoded.squeeze(1)  # (b, emb)
 
-        x = self.dropout(x)
-        logits = self.fc(x)  # (batch, num_classes)
+        out = self.dropout(decoded)
+        logits = self.fc(out)  # (b, num_classes)
         return logits
 
 
