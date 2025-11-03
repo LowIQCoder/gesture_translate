@@ -66,15 +66,21 @@ def preprocess_video(video_path: PathLike):
     video.release()
     return features
 
-def add_noise(landmarks, mean, std):
-    noise = np.random.normal(mean, std, len(landmarks))
-    new_landmarks = np.copy(landmarks)
-    new_landmarks += noise
-    return new_landmarks 
+def add_noise(gesture, mean, std):
+    new_gesture = list()
+    for landmark in gesture:
+        noise = np.random.normal(mean, std, len(landmark))
+        new_landmarks = np.copy(landmark)
+        for i in range(len(new_landmarks)):
+            new_landmarks[i] += noise[i]
+        new_gesture.append(new_landmarks)
+    gesture_landmarks = np.vstack(new_gesture) if new_gesture else np.zeros((0, 84), dtype=np.float32)
+    return gesture_landmarks 
 
 def preprocess_slovo_dataset(
         dataset_path: str | PathLike,
-        out_path: str | PathLike
+        out_path: str | PathLike,
+        noise_items = 5
     ) -> None:
     """Preprocess the dataset and save the features to a CSV file.
 
@@ -111,13 +117,17 @@ def preprocess_slovo_dataset(
                 frames.append(frame_landmarks)
 
             gesture_landmarks = np.vstack(frames) if frames else np.zeros((0, 84), dtype=np.float32)
+            
             data.append((gesture_landmarks, uuid2lab[gesture_id]))
-
+            for _ in range(noise_items):
+                noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
+                data.append((noise_gesture, uuid2lab[gesture_id]))
     
     data_list = [(gesture.tolist(), label) for gesture, label in data]
     result_df = pd.DataFrame(data_list, columns=["features", "label"])
+    result_df = result_df[result_df['label'].isin(list(range(1, 33)))]
     result_df.to_parquet("./data/processed/features.parquet", engine="pyarrow")
-
+    
     print(result_df.head())
     print("Total gestures loaded:", len(result_df))
 
@@ -125,5 +135,5 @@ def preprocess_slovo_dataset(
 if __name__ == "__main__":
     dataset_path = "./data/raw"
     out_path = "./data/processed"
-    preprocess_slovo_dataset(dataset_path, out_path)
+    preprocess_slovo_dataset(dataset_path, out_path, noise_items=5)
     

@@ -49,7 +49,7 @@ def train(
             optimizer.load_state_dict(checkpoint['optim_state_dict'])
             
             with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
-                f.write(str(summary(model, input_size=(1, 256, 84))))
+                f.write(str(summary(model, input_size=(1, 128, 84))))
             
             print(f"Loaded {checkpoint_path} with accuracy {best_acc}")
         except: 
@@ -84,11 +84,13 @@ def train(
             all_labels_train = []
 
             # Default training loop
-            for features, labels in (pbar := tqdm(train_loader, desc=f"Epoch [{epoch+1}/{epochs}] Training", leave=False)):
-                labels, features = labels.to(device), features.to(device)
-
+            for features, labels, mask in (pbar := tqdm(train_loader, desc=f"Epoch [{epoch+1}/{epochs}] Training", leave=False)):
+                labels, features, mask = labels.to(device), features.to(device), mask.to(device)
+                src_key_padding_mask = ~mask  # Invert the mask
+    
+                # Forward pass with mask
                 optimizer.zero_grad()
-                outputs = model(features)
+                outputs = model(features, mask=src_key_padding_mask)
                 loss = loss_fn(outputs, labels)
                 loss.backward()
                 optimizer.step()
@@ -119,9 +121,12 @@ def train(
 
             # Default validation loop
             with torch.inference_mode():
-                for features, labels in (pbar_val := tqdm(val_loader, desc=f"Epoch [{epoch+1}/{epochs}] Validation", leave=False)):
-                    labels, features = labels.to(device), features.to(device)
-                    outputs = model(features)
+                for features, labels, mask in (pbar_val := tqdm(val_loader, desc=f"Epoch [{epoch+1}/{epochs}] Validation", leave=False)):
+                    features, labels, mask = features.to(device), labels.to(device), mask.to(device)
+                    
+                    # Convert mask to format expected by transformer
+                    src_key_padding_mask = ~mask
+                    outputs = model(features, mask=src_key_padding_mask)
                     loss = loss_fn(outputs, labels)
 
                     batch_size = labels.size(0)
@@ -154,7 +159,7 @@ def train(
 
             # Logging metrics
             print(
-                f"Epoch {epoch+1}/{epochs} | "
+                f"Epoch {epoch+1:3d}/{epochs} | "
                 f"Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
                 f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f} | "
                 f"Train F1: {train_f1:.4f} | Val F1: {val_f1:.4f}"
@@ -170,20 +175,26 @@ def train(
                 "val_f1": val_f1,
             }, step=epoch)
 
-            model_info = mlflow.pytorch.log_model(model, name="model")
-
         # Saving best model
-        checkpoint = torch.load(checkpoint_path)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        
-        example_inputs = torch.tensor(torch.randn(1, 84),).to(device)
+        example_inputs = torch.tensor(torch.randn(1, 128, 84),).to(device)
         onnx_program = torch.onnx.export(model, example_inputs, dynamo=True)
         onnx_program.save("./data/models/best_model.onnx")
 
 if __name__ == "__main__":
-    train_loader, val_loader = get_dataloaders("./data/processed/features.parquet", 0.8, 64)
+    train_loader, val_loader = get_dataloaders("./data/processed/features.parquet", 0.85, 16)
 
-    model = LandmarkTransformerClassifier()
+    model = LandmarkTransformerClassifier(
+        num_landmarks=84,
+        num_classes=1001,
+        emb_dim=64,
+        num_heads=2,
+        num_encoders=2,
+        num_decoders=2,
+        dim_ff=128,
+        dropout=0.2,
+        max_seq_len=128,
+        pooling='mean'
+    )
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     loss = nn.CrossEntropyLoss()
 
@@ -195,7 +206,7 @@ if __name__ == "__main__":
         loss_fn=loss,
         train_loader=train_loader,
         val_loader=val_loader,
-        epochs=10,
+        epochs=1,
         device=device,
         checkpoint_path="./data/models/best_model.pth"
     )
