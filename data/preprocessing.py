@@ -66,6 +66,12 @@ def preprocess_video(video_path: PathLike):
     video.release()
     return features
 
+def add_noise(landmarks, mean, std):
+    noise = np.random.normal(mean, std, len(landmarks))
+    new_landmarks = np.copy(landmarks)
+    new_landmarks += noise
+    return new_landmarks 
+
 def preprocess_slovo_dataset(
         dataset_path: str | PathLike,
         out_path: str | PathLike

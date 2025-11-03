@@ -48,8 +48,8 @@ def train(
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optim_state_dict'])
             
-            with open("./data/model_summary.txt", "w") as f:
-                f.write(str(summary(model, input_size=(1, 1, 28, 28))))
+            with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
+                f.write(str(summary(model, input_size=(1, 256, 84))))
             
             print(f"Loaded {checkpoint_path} with accuracy {best_acc}")
         except: 
