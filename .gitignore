@@ -216,9 +216,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Heavy files
-data/models/
+
 data/raw/
-data/processed
 
 .vscode
 logs

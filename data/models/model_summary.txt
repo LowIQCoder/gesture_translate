@@ -1,0 +1,32 @@
+===============================================================================================
+Layer (type:depth-idx)                        Output Shape              Param #
+===============================================================================================
+LandmarkTransformerClassifier                 [1, 1001]                 128
+├─Linear: 1-1                                 [1, 256, 128]             10,880
+├─PositionalEncoding: 1-2                     [1, 256, 128]             --
+├─TransformerEncoder: 1-3                     [1, 256, 128]             --
+│    └─ModuleList: 2-1                        --                        --
+│    │    └─TransformerEncoderLayer: 3-1      [1, 256, 128]             198,272
+│    │    └─TransformerEncoderLayer: 3-2      [1, 256, 128]             198,272
+│    │    └─TransformerEncoderLayer: 3-3      [1, 256, 128]             198,272
+│    │    └─TransformerEncoderLayer: 3-4      [1, 256, 128]             198,272
+├─TransformerDecoder: 1-4                     [1, 1, 128]               --
+│    └─ModuleList: 2-2                        --                        --
+│    │    └─TransformerDecoderLayer: 3-5      [1, 1, 128]               264,576
+│    │    └─TransformerDecoderLayer: 3-6      [1, 1, 128]               264,576
+│    │    └─TransformerDecoderLayer: 3-7      [1, 1, 128]               264,576
+│    │    └─TransformerDecoderLayer: 3-8      [1, 1, 128]               264,576
+│    │    └─TransformerDecoderLayer: 3-9      [1, 1, 128]               264,576
+├─Dropout: 1-5                                [1, 128]                  --
+├─Linear: 1-6                                 [1, 1001]                 129,129
+===============================================================================================
+Total params: 2,256,105
+Trainable params: 2,256,105
+Non-trainable params: 0
+Total mult-adds (Units.MEGABYTES): 1.33
+===============================================================================================
+Input size (MB): 0.09
+Forward/backward pass size (MB): 7.65
+Params size (MB): 5.33
+Estimated Total Size (MB): 13.06
+===============================================================================================
