@@ -178,7 +178,7 @@ def train(
         onnx_program.save("./data/models/best_model.onnx")
 
 if __name__ == "__main__":
-    train_loader, val_loader = get_dataloaders("./data/processed/features.parquet", 0.85, 16)
+    train_loader, val_loader = get_dataloaders("./data/processed/train.parquet", 0.85, 16)
 
     model = GestureCNN(
         num_classes=33,

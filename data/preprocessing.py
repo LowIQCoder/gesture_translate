@@ -104,7 +104,8 @@ def preprocess_slovo_dataset(
     lab2id_df.to_csv("./data/processed/labels.csv")
 
     # Processing landmarks
-    data = []
+    train_data = []
+    test_data = []
     augmented = []
     with open("./data/raw/slovo_mediapipe.json", "r") as input_file:
         for gesture_id, sequence in tqdm(ijson.kvitems(input_file, ""), desc="Processing landmarks", total=20000):
@@ -127,23 +128,33 @@ def preprocess_slovo_dataset(
 
             gesture_landmarks = np.vstack(frames) if frames else np.zeros((0, 84), dtype=np.float32)
             
-            data.append((gesture_landmarks, uuid2lab[gesture_id]))
-            for _ in range(translate_items):
-                transtaled = random_translate(gesture_landmarks)
-                augmented.append((transtaled, uuid2lab[gesture_id]))
-            for _ in range(noise_items):
-                noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
-                augmented.append((noise_gesture, uuid2lab[gesture_id]))
-    data = data + augmented
+            if np.random.rand() <= 0.10:
+                test_data.append((gesture_landmarks, uuid2lab[gesture_id]))
+            else:
+                train_data.append((gesture_landmarks, uuid2lab[gesture_id]))
     
-    data_list = [(gesture.tolist(), label) for gesture, label in data]
-    result_df = pd.DataFrame(data_list, columns=["features", "label"])
-    result_df.to_parquet("./data/processed/features.parquet", engine="pyarrow")
+                # Augmenting dataset
+                for _ in range(translate_items):
+                    transtaled = random_translate(gesture_landmarks)
+                    augmented.append((transtaled, uuid2lab[gesture_id]))
+                for _ in range(noise_items):
+                    noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
+                    augmented.append((noise_gesture, uuid2lab[gesture_id]))
+
+    train_data = train_data + augmented    
+    train_data_list = [(gesture.tolist(), label) for gesture, label in train_data]
+    train_df = pd.DataFrame(train_data_list, columns=["features", "label"])
+    train_df.to_parquet("./data/processed/train.parquet", engine="pyarrow")
     
-    print(f"Total lables:\t\t{len(result_df['label'].unique())}")
-    print(f"Original dataset size:\t{len(data) - len(augmented)}")
-    print(f"Augmented dataset size:\t{len(data)}")
-    print("Dataset example:\n", result_df.head())
+    test_data_list = [(gesture.tolist(), label) for gesture, label in test_data]
+    test_df = pd.DataFrame(test_data_list, columns=["features", "label"])
+    test_df.to_parquet("./data/processed/test.parquet", engine="pyarrow")
+    
+    print(f"Total lables:\t\t\t{len(train_df['label'].unique())}")
+    print(f"Test dataset size:\t\t{len(test_df)}")
+    print(f"Original train dataset size:\t{len(train_df) - len(augmented)}")
+    print(f"Augmented train dataset size:\t{len(train_df)}")
+    print("Dataset example:\n", train_df.head())
 
 
 if __name__ == "__main__":
