@@ -8,54 +8,44 @@ import numpy as np
 from os import PathLike
 from typing import Tuple
 
-class GestureDataset(Dataset):
-    def __init__(self, parquet_path: str, max_seq_len=256):
-        self.df = pd.read_parquet(parquet_path)
-        self.df["features"] = self.df["features"].apply(lambda x: [list(f) for f in x])
-        self.df = self.df[self.df["features"].apply(lambda x: len(x) > 0)].reset_index(drop=True)
+class LandmarkDataset(Dataset):
+    def __init__(self, dataset_path: str, max_seq_len: int = None):
+        self.df = pd.read_parquet(dataset_path)
+        if max_seq_len is None:
+            max_seq_len = 0
+            for row in self.df['features']:
+                if len(row) > max_seq_len:
+                    max_seq_len = len(row)
         self.max_seq_len = max_seq_len
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
-        seq = self.df.iloc[idx]["features"]
+        features = self.df.iloc[idx]['features']
+        label = self.df.iloc[idx]['label']
         
-        # Convert to numpy and ensure it's 2D
-        seq_array = np.array(seq, dtype=np.float32)
+        tensors = [torch.from_numpy(a).float() for a in features]
+        row_tensor = torch.stack(tensors)
         
-        # Truncate if sequence is too long
-        if len(seq_array) > self.max_seq_len:
-            seq_array = seq_array[:self.max_seq_len]
+        if len(row_tensor) < self.max_seq_len:
+            pad_size = self.max_seq_len - len(row_tensor)
+            padded = torch.cat([
+                row_tensor, 
+                torch.zeros(pad_size, 84)
+            ], dim=0)
+        elif len(row_tensor) > self.max_seq_len:
+            padded = row_tensor[:self.max_seq_len]
+        else:
+            padded = row_tensor
         
-        tensor_seq = torch.tensor(seq_array, dtype=torch.float32)  # (seq_len, 84)
-        label = int(self.df.iloc[idx]["label"])
-        return tensor_seq, label
-
-def collate_fn(batch):
-    sequences, labels = zip(*batch)
-    
-    # Get original lengths before padding
-    lengths = torch.tensor([len(seq) for seq in sequences], dtype=torch.long)
-    
-    # Pad sequences - use 0.0 as it's a safe padding value for normalized coordinates
-    padded = pad_sequence(sequences, batch_first=True, padding_value=0.0)  # (batch, max_seq_len, 84)
-    
-    # Create attention mask: 1 for real data, 0 for padding
-    # Shape: (batch, seq_len)
-    mask = torch.zeros(len(sequences), padded.shape[1], dtype=torch.bool)
-    for i, length in enumerate(lengths):
-        mask[i, :length] = 1
-    
-    labels = torch.tensor(labels, dtype=torch.long)
-    return padded, labels, mask
+        return padded, label        
 
 
 def get_dataloaders(
     path_to_dataset: str | PathLike,
     split: float,
-    batch_size: int,
-    max_seq_len: int = 256
+    batch_size: int
 ) -> Tuple[DataLoader, DataLoader]:
     """Generate DataLoaders from preprocessed data
 
@@ -68,7 +58,7 @@ def get_dataloaders(
     Returns:
         Tuple: Training and Validation DataLoaders
     """
-    dataset = GestureDataset(path_to_dataset, max_seq_len=max_seq_len)
+    dataset = LandmarkDataset(path_to_dataset)
 
     # Calculate split sizes
     train_size = int(len(dataset) * split)
@@ -79,18 +69,16 @@ def get_dataloaders(
     )
 
     train_loader = DataLoader(
-        train_dataset, 
-        batch_size=batch_size, 
-        collate_fn=collate_fn, 
+        train_dataset,
+        batch_size=batch_size,
         shuffle=True,
-        #num_workers=2,  # Add for better performance
-        #pin_memory=True  # Add if using GPU
+        #num_workers=2,
+        #pin_memory=True
     )
     
     val_loader = DataLoader(
-        val_dataset, 
-        batch_size=batch_size, 
-        collate_fn=collate_fn,
+        val_dataset,
+        batch_size=batch_size,
         #num_workers=2,
         #pin_memory=True
     )

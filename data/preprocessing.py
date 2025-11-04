@@ -101,6 +101,8 @@ def preprocess_slovo_dataset(
     data = []
     with open("./data/raw/slovo_mediapipe.json", "r") as input_file:
         for gesture_id, sequence in tqdm(ijson.kvitems(input_file, ""), desc="Processing landmarks", total=20000):
+            if uuid2lab[gesture_id] not in (list(range(1, 33))):
+                continue
             frames = []
             # Extracting each feature
             for frame in sequence:
@@ -125,7 +127,6 @@ def preprocess_slovo_dataset(
     
     data_list = [(gesture.tolist(), label) for gesture, label in data]
     result_df = pd.DataFrame(data_list, columns=["features", "label"])
-    result_df = result_df[result_df['label'].isin(list(range(1, 33)))]
     result_df.to_parquet("./data/processed/features.parquet", engine="pyarrow")
     
     print(result_df.head())

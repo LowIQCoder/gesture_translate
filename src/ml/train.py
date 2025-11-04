@@ -10,7 +10,7 @@ from torchinfo import summary
 import mlflow
 
 from src.ml.dataloaders import get_dataloaders
-from src.ml.model import LandmarkTransformerClassifier
+from src.ml.model import GestureCNN
 
 def train(
     model: nn.Module,
@@ -42,14 +42,14 @@ def train(
     best_acc = 0
     if checkpoint_path:
         try:
+            with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
+                f.write(str(summary(model, input_size=(1, 128, 84))))
+
             checkpoint = torch.load(checkpoint_path)
             
             best_acc = checkpoint['accuracy']
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optim_state_dict'])
-            
-            with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
-                f.write(str(summary(model, input_size=(1, 128, 84))))
             
             print(f"Loaded {checkpoint_path} with accuracy {best_acc}")
         except: 
@@ -84,13 +84,12 @@ def train(
             all_labels_train = []
 
             # Default training loop
-            for features, labels, mask in (pbar := tqdm(train_loader, desc=f"Epoch [{epoch+1}/{epochs}] Training", leave=False)):
-                labels, features, mask = labels.to(device), features.to(device), mask.to(device)
-                src_key_padding_mask = ~mask  # Invert the mask
+            for features, labels in (pbar := tqdm(train_loader, desc=f"Epoch [{epoch+1}/{epochs}] Training", leave=False)):
+                labels, features = labels.to(device), features.to(device)
     
                 # Forward pass with mask
                 optimizer.zero_grad()
-                outputs = model(features, mask=src_key_padding_mask)
+                outputs = model(features)
                 loss = loss_fn(outputs, labels)
                 loss.backward()
                 optimizer.step()
@@ -121,12 +120,10 @@ def train(
 
             # Default validation loop
             with torch.inference_mode():
-                for features, labels, mask in (pbar_val := tqdm(val_loader, desc=f"Epoch [{epoch+1}/{epochs}] Validation", leave=False)):
-                    features, labels, mask = features.to(device), labels.to(device), mask.to(device)
+                for features, labels in (pbar_val := tqdm(val_loader, desc=f"Epoch [{epoch+1}/{epochs}] Validation", leave=False)):
+                    features, labels = features.to(device), labels.to(device)
                     
-                    # Convert mask to format expected by transformer
-                    src_key_padding_mask = ~mask
-                    outputs = model(features, mask=src_key_padding_mask)
+                    outputs = model(features)
                     loss = loss_fn(outputs, labels)
 
                     batch_size = labels.size(0)
@@ -183,17 +180,11 @@ def train(
 if __name__ == "__main__":
     train_loader, val_loader = get_dataloaders("./data/processed/features.parquet", 0.85, 16)
 
-    model = LandmarkTransformerClassifier(
-        num_landmarks=84,
-        num_classes=1001,
-        emb_dim=64,
-        num_heads=2,
-        num_encoders=2,
-        num_decoders=2,
-        dim_ff=128,
-        dropout=0.2,
-        max_seq_len=128,
-        pooling='mean'
+    model = GestureCNN(
+        num_classes=33,
+        d_model=84,
+        d_hidden=64,
+        dropout=0.3
     )
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     loss = nn.CrossEntropyLoss()
@@ -206,7 +197,7 @@ if __name__ == "__main__":
         loss_fn=loss,
         train_loader=train_loader,
         val_loader=val_loader,
-        epochs=1,
+        epochs=30,
         device=device,
         checkpoint_path="./data/models/best_model.pth"
     )
