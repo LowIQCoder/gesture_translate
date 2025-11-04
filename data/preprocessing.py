@@ -67,20 +67,26 @@ def preprocess_video(video_path: PathLike):
     return features
 
 def add_noise(gesture, mean, std):
-    new_gesture = list()
-    for landmark in gesture:
-        noise = np.random.normal(mean, std, len(landmark))
-        new_landmarks = np.copy(landmark)
-        for i in range(len(new_landmarks)):
-            new_landmarks[i] += noise[i]
-        new_gesture.append(new_landmarks)
-    gesture_landmarks = np.vstack(new_gesture) if new_gesture else np.zeros((0, 84), dtype=np.float32)
-    return gesture_landmarks 
+    new_gesture = np.copy(gesture)
+    noise = np.random.normal(mean, std, 84)
+    for frame in new_gesture:
+        frame += noise
+    return new_gesture
+
+def random_translate(gesture):
+    new_gesture = np.copy(gesture)
+    x_translate = np.random.rand()
+    y_translate = np.random.rand()
+    for frame in new_gesture:
+        frame[:42] += x_translate
+        frame[42:84] += y_translate
+    return new_gesture
 
 def preprocess_slovo_dataset(
         dataset_path: str | PathLike,
         out_path: str | PathLike,
-        noise_items = 5
+        noise_items = 5,
+        translate_items = 5
     ) -> None:
     """Preprocess the dataset and save the features to a CSV file.
 
@@ -99,6 +105,7 @@ def preprocess_slovo_dataset(
 
     # Processing landmarks
     data = []
+    augmented = []
     with open("./data/raw/slovo_mediapipe.json", "r") as input_file:
         for gesture_id, sequence in tqdm(ijson.kvitems(input_file, ""), desc="Processing landmarks", total=20000):
             if uuid2lab[gesture_id] not in (list(range(1, 33))):
@@ -106,7 +113,7 @@ def preprocess_slovo_dataset(
             frames = []
             # Extracting each feature
             for frame in sequence:
-                frame_landmarks = np.zeros(84, dtype=np.float32)
+                frame_landmarks = np.zeros(84, dtype=np.float16)
 
                 if 'hand 1' in frame:
                     frame_landmarks[0:21] = [lm['x'] for lm in frame['hand 1']]
@@ -121,20 +128,26 @@ def preprocess_slovo_dataset(
             gesture_landmarks = np.vstack(frames) if frames else np.zeros((0, 84), dtype=np.float32)
             
             data.append((gesture_landmarks, uuid2lab[gesture_id]))
+            for _ in range(translate_items):
+                transtaled = random_translate(gesture_landmarks)
+                augmented.append((transtaled, uuid2lab[gesture_id]))
             for _ in range(noise_items):
                 noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
-                data.append((noise_gesture, uuid2lab[gesture_id]))
+                augmented.append((noise_gesture, uuid2lab[gesture_id]))
+    data = data + augmented
     
     data_list = [(gesture.tolist(), label) for gesture, label in data]
     result_df = pd.DataFrame(data_list, columns=["features", "label"])
     result_df.to_parquet("./data/processed/features.parquet", engine="pyarrow")
     
-    print(result_df.head())
-    print("Total gestures loaded:", len(result_df))
+    print(f"Total lables:\t\t{len(result_df['label'].unique())}")
+    print(f"Original dataset size:\t{len(data) - len(augmented)}")
+    print(f"Augmented dataset size:\t{len(data)}")
+    print("Dataset example:\n", result_df.head())
 
 
 if __name__ == "__main__":
     dataset_path = "./data/raw"
     out_path = "./data/processed"
-    preprocess_slovo_dataset(dataset_path, out_path, noise_items=5)
+    preprocess_slovo_dataset(dataset_path, out_path, 5, 5)
     
