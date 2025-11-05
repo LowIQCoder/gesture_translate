@@ -66,6 +66,29 @@ def preprocess_video(video_path: PathLike):
     video.release()
     return features
 
+def normalize_frame(frame):
+    """
+    Normalize 2D hand landmarks (42 values: 21 x, 21 y) by:
+    1. Centering the coordinates around the mean (or wrist).
+    2. Scaling so that the maximum distance from center = 1.
+    """
+    frame = frame.astype(np.float32)
+    x = frame[:42]
+    y = frame[42:]
+
+    coords = np.stack([x, y], axis=1)
+
+    center = coords.mean(axis=0)
+    coords -= center
+
+    scale = np.linalg.norm(coords, axis=1).max()
+    if scale > 0:
+        coords /= scale
+
+    normalized = coords.flatten().astype(np.float16)
+    return normalized
+
+
 def add_noise(gesture, mean, std):
     new_gesture = np.copy(gesture)
     noise = np.random.normal(mean, std, 84)
@@ -106,7 +129,8 @@ def preprocess_slovo_dataset(
     # Processing landmarks
     train_data = []
     test_data = []
-    augmented = []
+    augmented_train = []
+    augmented_test = []
     with open("./data/raw/slovo_mediapipe.json", "r") as input_file:
         for gesture_id, sequence in tqdm(ijson.kvitems(input_file, ""), desc="Processing landmarks", total=20000):
             if uuid2lab[gesture_id] not in (list(range(1, 33))):
@@ -124,35 +148,42 @@ def preprocess_slovo_dataset(
                     frame_landmarks[42:63] = [lm['x'] for lm in frame['hand 2']]
                     frame_landmarks[63:84] = [lm['y'] for lm in frame['hand 2']]
 
-                frames.append(frame_landmarks)
+                frames.append(normalize_frame(frame_landmarks))
 
             gesture_landmarks = np.vstack(frames) if frames else np.zeros((0, 84), dtype=np.float32)
             
             if np.random.rand() <= 0.10:
                 test_data.append((gesture_landmarks, uuid2lab[gesture_id]))
+                
+                for _ in range(translate_items):
+                    transtaled = random_translate(gesture_landmarks)
+                    augmented_test.append((transtaled, uuid2lab[gesture_id]))
+                for _ in range(noise_items):
+                    noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
+                    augmented_test.append((noise_gesture, uuid2lab[gesture_id]))
             else:
                 train_data.append((gesture_landmarks, uuid2lab[gesture_id]))
     
-                # Augmenting dataset
                 for _ in range(translate_items):
                     transtaled = random_translate(gesture_landmarks)
-                    augmented.append((transtaled, uuid2lab[gesture_id]))
+                    augmented_train.append((transtaled, uuid2lab[gesture_id]))
                 for _ in range(noise_items):
                     noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
-                    augmented.append((noise_gesture, uuid2lab[gesture_id]))
+                    augmented_train.append((noise_gesture, uuid2lab[gesture_id]))
 
-    train_data = train_data + augmented    
+    train_data = train_data + augmented_train    
     train_data_list = [(gesture.tolist(), label) for gesture, label in train_data]
     train_df = pd.DataFrame(train_data_list, columns=["features", "label"])
     train_df.to_parquet("./data/processed/train.parquet", engine="pyarrow")
     
+    test_data = test_data + augmented_test
     test_data_list = [(gesture.tolist(), label) for gesture, label in test_data]
     test_df = pd.DataFrame(test_data_list, columns=["features", "label"])
     test_df.to_parquet("./data/processed/test.parquet", engine="pyarrow")
     
     print(f"Total lables:\t\t\t{len(train_df['label'].unique())}")
     print(f"Test dataset size:\t\t{len(test_df)}")
-    print(f"Original train dataset size:\t{len(train_df) - len(augmented)}")
+    print(f"Original train dataset size:\t{len(train_df) - len(augmented_train)}")
     print(f"Augmented train dataset size:\t{len(train_df)}")
     print("Dataset example:\n", train_df.head())
 
