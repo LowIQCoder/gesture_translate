@@ -43,44 +43,32 @@ class LandmarkDataset(Dataset):
 
 
 def get_dataloaders(
-    path_to_dataset: str | PathLike,
-    split: float,
+    path_to_train: str | PathLike,
+    path_to_test: str | PathLike,
     batch_size: int
 ) -> Tuple[DataLoader, DataLoader]:
     """Generate DataLoaders from preprocessed data
 
     Args:
         path_to_dataset (str, PathLike): Path to preprocessed dataset in parquet format
-        split (float): Split ratio of training and validating datasets
         batch_size (int): Size of batch for DataLoader
         max_seq_len (int): Maximum sequence length (longer sequences will be truncated)
     
     Returns:
-        Tuple: Training and Validation DataLoaders
+        Tuple: Training, Validation and Test DataLoaders
     """
-    dataset = LandmarkDataset(path_to_dataset)
-
-    # Calculate split sizes
-    train_size = int(len(dataset) * split)
-    val_size = len(dataset) - train_size
-    
-    train_dataset, val_dataset = random_split(
-        dataset, [train_size, val_size]
-    )
+    train_dataset = LandmarkDataset(path_to_train)
+    test_dataset = LandmarkDataset(path_to_test)
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        #num_workers=2,
-        #pin_memory=True
     )
-    
+        
     val_loader = DataLoader(
-        val_dataset,
+        test_dataset,
         batch_size=batch_size,
-        #num_workers=2,
-        #pin_memory=True
     )
 
     return train_loader, val_loader

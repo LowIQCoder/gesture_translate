@@ -24,11 +24,14 @@ services:
       - "5000:5000"
     volumes:
       - ./services/mlflow:/mlflow
+    environment:
+      - MLFLOW_ARTIFACTS_DESTINATION=/mlflow/artifacts
     command: >
       mlflow server
       --backend-store-uri sqlite:///mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --artifacts-destination file:///mlflow/artifacts
       --host 0.0.0.0
+      --serve-artifacts
     
   postgres:
     image: postgres:16
