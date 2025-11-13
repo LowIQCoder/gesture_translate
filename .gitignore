@@ -220,7 +220,5 @@ __marimo__/
 
 # Heavy files
 
-data/raw/
-
 .vscode
 logs

@@ -1,3 +1,5 @@
 *.csv filter=lfs diff=lfs merge=lfs -text
 *.paraquet filter=lfs diff=lfs merge=lfs -text
 *.parquet filter=lfs diff=lfs merge=lfs -text
+data/raw/slovo_mediapipe.json filter=lfs diff=lfs merge=lfs -text
+data/raw/annotations.csv filter=lfs diff=lfs merge=lfs -text
