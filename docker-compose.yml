@@ -17,6 +17,29 @@ x-airflow-common:
       condition: service_healthy
 
 services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: gesture-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src/web:/app/src/web
+      - ./data:/app/data
+      - ./src/utils:/app/src/utils
+    environment:
+      - PORT=8000
+      - PYTHONPATH=/app
+      - FLASK_APP=src/web/app.py
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   mlflow:
     image: ghcr.io/mlflow/mlflow
     container_name: mlflow
