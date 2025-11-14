@@ -35,7 +35,7 @@ def log_metrics(
         logs += f"Epoch {epoch_info[0]+1:3d}/{epoch_info[1]} │ "
     for metrics in metrics_list:
         for metric, value in metrics.items():
-            if metric in ["conf_mat", "roc_curve"]:
+            if metric.split("_")[-1] in ["mat", "curve"]:
                 continue
             logs += f"{metric}: {value:.4f} │ "
 
@@ -55,41 +55,67 @@ def evaluate(
     prefix: str,
     batch_times: list = None,
     all_probs: list = None,
-) -> dict:
+) -> tuple[dict, dict]:
     """Evaluation function
 
     Args:
         loss (float): All measurements losses
         total (int): Total measurements
         correct (int): All total classifications
-        all_labels (list): All true lables
-        all_predicted (list): All predicted lables
+        all_labels (list): All true labels
+        all_predicted (list): All predicted labels
         all_probs (list): All predicted probabilities
-        batches_times (list): All batches times
+        batch_times (list): All batches times
         metrics (list): List of needed metrics
+        prefix (str): Prefix for metric names (e.g., "train_", "val_")
 
     Returns:
-        dict: Dictionary with required metrics
+        tuple[dict, dict]: Tuple of (logged_metrics, non_logged_metrics) dictionaries
     """
-    result_metrics = dict()
+    logging_result_metrics = {}
+    nonlogging_result_metrics = {}
+    
+    all_labels_np = np.array(all_labels)
+    all_predicted_np = np.array(all_predicted)
+    
     if "avg_loss" in metrics:
-        result_metrics[prefix + "avg_loss"] = loss / total
-    if "batch_time" in metrics:
-        result_metrics[prefix + "batch_time"] = np.mean(batch_times)
+        logging_result_metrics[prefix + "avg_loss"] = loss / total
+    
+    if "batch_time" in metrics and batch_times:
+        logging_result_metrics[prefix + "batch_time"] = np.mean(batch_times)
+    
     if "accuracy" in metrics:
-        result_metrics[prefix + "accuracy"] = correct / total
+        logging_result_metrics[prefix + "accuracy"] = correct / total
+    
     if "precision" in metrics:
-        result_metrics[prefix + "precision"] = precision_score(correct, total)
+        logging_result_metrics[prefix + "precision"] = precision_score(
+            all_labels_np, all_predicted_np, average="macro", zero_division=0
+        )
+    
     if "recall" in metrics:
-        result_metrics[prefix + "recall"] = recall_score(correct, total)
+        logging_result_metrics[prefix + "recall"] = recall_score(
+            all_labels_np, all_predicted_np, average="macro", zero_division=0
+        )
+    
     if "f1" in metrics:
-        result_metrics[prefix + "f1"] = f1_score(all_labels, all_predicted, average="macro")
-    if "roc-auc" in metrics:
-        result_metrics[prefix + "roc-auc"] = roc_auc_score(all_labels, all_probs, multi_class='ovr')
-    if "conf_mat" in metrics:
-        result_metrics[prefix + "conf_mat"] = confusion_matrix(all_labels, all_predicted)
+        logging_result_metrics[prefix + "f1"] = f1_score(
+            all_labels_np, all_predicted_np, average="macro", zero_division=0
+        )
+    
+    if "roc-auc" in metrics and all_probs is not None:
+        all_probs_np = np.array(all_probs)
 
-    return result_metrics
+        roc_auc = roc_auc_score(
+            all_labels_np, all_probs_np, multi_class='ovr', average='macro'
+        )
+        logging_result_metrics[prefix + "roc-auc"] = roc_auc
+
+    if "conf_mat" in metrics:
+        conf_matrix = confusion_matrix(all_labels_np, all_predicted_np)
+        nonlogging_result_metrics[prefix + "conf_mat"] = conf_matrix
+        logging_result_metrics[prefix + "conf_mat_accuracy"] = np.trace(conf_matrix) / np.sum(conf_matrix)
+    
+    return logging_result_metrics, nonlogging_result_metrics
 
 def train_epoch(
     model: torch.nn.Module,
@@ -208,7 +234,7 @@ def train_epoch(
         prefix="train_",
         batch_times=batch_times
     )
-    results["train_lr"] = optimizer.param_groups[0]['lr']
+    results[0]["train_lr"] = optimizer.param_groups[0]['lr']
 
     return results
 
@@ -297,7 +323,7 @@ if __name__ == "__main__":
     NUM_CLASSES = 1001
     DIM_MODEL = 256
     DIM_FF = 512
-    NUM_ENCODERS = 6
+    NUM_ENCODERS = 4
     NUM_HEADS = 8
     DROPOUT = 0.5
 
@@ -307,7 +333,7 @@ if __name__ == "__main__":
     MAX_LEARNING_RATE = 2e-5
     WEIGHT_DECAY = 1e-2
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    EPOCHS = 100
+    EPOCHS = 1
     PATIENCE = 10
     BATCH_SIZE = 256
 
@@ -356,7 +382,7 @@ if __name__ == "__main__":
         max_lr=MAX_LEARNING_RATE,
         epochs=EPOCHS,
         steps_per_epoch=len(train_loader),
-        pct_start=0.1,
+        pct_start=0.15,
         div_factor=10,
         final_div_factor=100
     )
@@ -365,16 +391,10 @@ if __name__ == "__main__":
         f.write(str(summary(model, input_size=(1, 1, 84))))
     
     with open("./data/models/model_configuration.json", "w", encoding="utf-8") as f:
-        NUM_CLASSES = 1001
-        DIM_MODEL = 256
-        DIM_FF = 512
-        NUM_ENCODERS = 6
-        NUM_HEADS = 8
-        DROPOUT = 0.5
         json.dump({
             "num_classes": 1001,
             "dim_model": 256,
-            "dim_ff": 512,
+            "dim_ff": 256,
             "num_encoders": 6,
             "num_heads": 8,
             "dropout": 0.5
@@ -425,8 +445,8 @@ if __name__ == "__main__":
             )
 
             # Saving model checkpoint
-            if val_metrics["val_accuracy"] > best_metrics["accuracy"]:
-                best_metrics["accuracy"] = val_metrics["val_accuracy"]
+            if val_metrics[0]["val_accuracy"] > best_metrics["accuracy"]:
+                best_metrics["accuracy"] = val_metrics[0]["val_accuracy"]
                 torch.save({
                     "model_state_dict": model.state_dict(),
                     "optim_state_dict": optimizer.state_dict(),
@@ -439,10 +459,10 @@ if __name__ == "__main__":
                 no_improvements += 1
 
             # Logging metrics to console
-            log_metrics([train_metrics, val_metrics], epoch_info=(epoch, EPOCHS))
+            log_metrics([train_metrics[0], val_metrics[0]], epoch_info=(epoch, EPOCHS))
 
-            mlflow.log_metrics(train_metrics)
-            mlflow.log_metrics(val_metrics)
+            mlflow.log_metrics(train_metrics[0], step=epoch)
+            mlflow.log_metrics(val_metrics[0], step=epoch)
 
             # Checking for early stopping
             if no_improvements >= PATIENCE:
@@ -460,12 +480,12 @@ if __name__ == "__main__":
             metrics=["avg_loss", "accuracy", "f1", "conf_mat"]
         )
 
-        log_metrics([test_metrics], epoch_info=(EPOCHS+1, EPOCHS))
+        log_metrics([test_metrics[0]], epoch_info=(EPOCHS+1, EPOCHS))
 
-        mlflow.log_metrics(test_metrics)
+        mlflow.log_metrics(test_metrics[0])
 
         fig = plt.figure(figsize=(20, 20))
-        sns.heatmap(test_metrics["test_conf_mat"], fmt='d', cmap='Blues', annot=False)
+        sns.heatmap(test_metrics[1]["test_conf_mat"], fmt='d', cmap='Blues', annot=False)
         plt.xlabel('Predicted')
         plt.ylabel('True')
 

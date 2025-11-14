@@ -13,8 +13,6 @@ GestureTransformer                            [1, 1001]                 256
 │    │    └─TransformerEncoderLayer: 3-2      [1, 2, 256]               527,104
 │    │    └─TransformerEncoderLayer: 3-3      [1, 2, 256]               527,104
 │    │    └─TransformerEncoderLayer: 3-4      [1, 2, 256]               527,104
-│    │    └─TransformerEncoderLayer: 3-5      [1, 2, 256]               527,104
-│    │    └─TransformerEncoderLayer: 3-6      [1, 2, 256]               527,104
 ├─Sequential: 1-4                             [1, 1001]                 --
 │    └─Dropout: 2-5                           [1, 256]                  --
 │    └─Linear: 2-6                            [1, 128]                  32,896
@@ -22,13 +20,13 @@ GestureTransformer                            [1, 1001]                 256
 │    └─LayerNorm: 2-8                         [1, 128]                  256
 │    └─Linear: 2-9                            [1, 1001]                 129,129
 ===============================================================================================
-Total params: 3,347,433
-Trainable params: 3,347,433
+Total params: 2,293,225
+Trainable params: 2,293,225
 Non-trainable params: 0
-Total mult-adds (Units.MEGABYTES): 1.77
+Total mult-adds (Units.MEGABYTES): 1.24
 ===============================================================================================
 Input size (MB): 0.00
-Forward/backward pass size (MB): 0.14
-Params size (MB): 7.07
-Estimated Total Size (MB): 7.21
+Forward/backward pass size (MB): 0.10
+Params size (MB): 4.96
+Estimated Total Size (MB): 5.06
 ===============================================================================================
