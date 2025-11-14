@@ -15,13 +15,7 @@ WORKDIR /app
 
 # Копирование requirements и установка зависимостей
 COPY requirements.txt .
-RUN pip install --no-cache-dir \
-    flask \
-    flask-cors \
-    opencv-python-headless \
-    onnxruntime \
-    pillow \
-    -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Копирование всего проекта
 COPY . .
@@ -30,6 +24,7 @@ COPY . .
 ENV PYTHONPATH=/app
 ENV FLASK_APP=src/web/app.py
 ENV PORT=8000
+
 # Отключение OpenGL для OpenCV (для headless режима)
 ENV OPENCV_DISABLE_OPENCL=1
 ENV QT_QPA_PLATFORM=offscreen
@@ -39,5 +34,5 @@ EXPOSE 8000
 
 # Запуск приложения
 WORKDIR /app
-CMD ["python", "src/web/app.py"]
+CMD ["python", "-m". "src.backend.app.py"]
 
