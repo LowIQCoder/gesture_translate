@@ -35,4 +35,3 @@ EXPOSE 8000
 # Запуск приложения
 WORKDIR /app
 CMD ["python", "-m". "src.backend.app.py"]
-

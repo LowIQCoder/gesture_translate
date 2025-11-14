@@ -34,6 +34,20 @@ services:
       - FLASK_APP=src/backend/app.py
     restart: always
 
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    volumes:
+      - ./static:/usr/share/nginx/html/static
+      - ./templates:/usr/share/nginx/html/templates
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=80
+
   mlflow:
     image: ghcr.io/mlflow/mlflow
     container_name: mlflow
