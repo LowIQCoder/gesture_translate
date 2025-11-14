@@ -1,38 +1,24 @@
-import kagglehub
 from os import PathLike
 import os
+import json
 
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
+import ijson
+import pyarrow
 
 import cv2
 import mediapipe as mp
 
 from data.features import landmarks_to_features
 
-def get_kaggle_dataset(
-        path: str | PathLike
-    ) -> str:
-    """Downloads dataset from KaggleHub
-    
-    Args:
-        path (str, PathLike): Path to download to
-
-    Returns:
-        str: Path datased downloaded to
-    """
-    os.environ["KAGGLEHUB_CACHE"] = os.path.abspath(path)
-    dataset_path = kagglehub.dataset_download("harshvardhan21/sign-language-detection-using-images")
-    print(f"Dataset downloaded to: {os.path.abspath(dataset_path)}")
-    return os.path.abspath(dataset_path)
-
-def preprocess_image(image_path, debug=False):
+def preprocess_image(image_path: PathLike, hands_model=None):
     """Preprocess the image for hand tracking and return landmark features.
 
     Args:
         image_path (str): The path to the image file.
+        frame (int), optional: If debig is set loggs files with frame number
         debug (bool, optional): Whether to display debug info. Defaults to False.
 
     Raises:
@@ -41,44 +27,91 @@ def preprocess_image(image_path, debug=False):
     Returns:
         np.ndarray: The processed feature vector of size (84,).
     """
-    mp_hands = mp.solutions.hands
-    mp_drawing = mp.solutions.drawing_utils
-    mp_drawing_styles = mp.solutions.drawing_styles
-
     image = cv2.imread(image_path)
     if image is None:
         raise ValueError(f"Image not found at {image_path}")
-
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    with mp_hands.Hands(
-        static_image_mode=True,
-        max_num_hands=2,
-        min_detection_confidence=0.5
-    ) as hands:
-        results = hands.process(image_rgb)
+    results = hands_model.process(image_rgb)
+    
+    # mp_drawing = mp.solutions.drawing_utils
+    # mp_drawing_styles = mp.solutions.drawing_styles
+    # annotated_image = image.copy()
+    # if results.multi_hand_landmarks:
+    #     for hand_landmarks in results.multi_hand_landmarks:
+    #         mp_drawing.draw_landmarks(
+    #             annotated_image,
+    #             hand_landmarks,
+    #             mp_hands.HAND_CONNECTIONS,
+    #             mp_drawing_styles.get_default_hand_landmarks_style(),
+    #             mp_drawing_styles.get_default_hand_connections_style()
+    #         )
+    # cv2.imwrite("./annotated_image.png", annotated_image)
 
-        features = landmarks_to_features(results)
+    return landmarks_to_features(results)
 
-        if debug:
-            annotated_image = image.copy()
-            if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
-                    mp_drawing.draw_landmarks(
-                        annotated_image,
-                        hand_landmarks,
-                        mp_hands.HAND_CONNECTIONS,
-                        mp_drawing_styles.get_default_hand_landmarks_style(),
-                        mp_drawing_styles.get_default_hand_connections_style()
-                    )
-            cv2.imwrite("./annotated_image.png", annotated_image)
-
+def preprocess_video(video_path: PathLike):
+    video = cv2.VideoCapture(video_path)
+    if video is None:
+        raise ValueError(f"Video not found at {video}")
+    video.set(cv2.CAP_PROP_FPS, 25)
+    features = []
+    i = 0
+    mp_hands = mp.solutions.hands
+    hands_model = mp_hands.Hands(static_image_mode=True, max_num_hands=2)
+    while True:
+        ret, frame = video.read()
+        if not ret:
+            break
+        features.append(preprocess_image(frame, hands_model))
+        i += 1
+    video.release()
     return features
 
+def normalize_frame(frame):
+    """
+    Normalize 2D hand landmarks (42 values: 21 x, 21 y) by:
+    1. Centering the coordinates around the mean (or wrist).
+    2. Scaling so that the maximum distance from center = 1.
+    """
+    frame = frame.astype(np.float32)
+    x = frame[:42]
+    y = frame[42:]
 
-def preprocess_dataset(
+    coords = np.stack([x, y], axis=1)
+
+    center = coords.mean(axis=0)
+    coords -= center
+
+    scale = np.linalg.norm(coords, axis=1).max()
+    if scale > 0:
+        coords /= scale
+
+    normalized = coords.flatten().astype(np.float16)
+    return normalized
+
+
+def add_noise(gesture, mean, std):
+    new_gesture = np.copy(gesture)
+    noise = np.random.normal(mean, std, 84)
+    for frame in new_gesture:
+        frame += noise
+    return new_gesture
+
+def random_translate(gesture):
+    new_gesture = np.copy(gesture)
+    x_translate = np.random.rand()
+    y_translate = np.random.rand()
+    for frame in new_gesture:
+        frame[:42] += x_translate
+        frame[42:84] += y_translate
+    return new_gesture
+
+def preprocess_slovo_dataset(
         dataset_path: str | PathLike,
-        out_path: str | PathLike
+        out_path: str | PathLike,
+        noise_items = 5,
+        translate_items = 5
     ) -> None:
     """Preprocess the dataset and save the features to a CSV file.
 
@@ -86,34 +119,89 @@ def preprocess_dataset(
         dataset_path (str | PathLike): The path to the dataset.
         out_path (str | PathLike): The path to save the processed features.
     """
-    LABELS = [
-        '1', '2', '3', '4', '5', '6', '7', '8', '9',
-        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 
-        'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-        'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
-    ]
+    # Attechment UUID to categorical label
+    labels_df = pd.read_csv("./data/raw/annotations.csv")  
+    lab2id = {s:i for i, s in enumerate(labels_df['text'].unique())}
+    uuid2lab = {row.attachment_id: lab2id[row.text] for row in labels_df.itertuples(index=False)}
 
-    all_features = []
+    # Label to category index
+    lab2id_df = pd.DataFrame([list(lab2id.keys()), list(lab2id.values())]).transpose()
+    lab2id_df.to_csv("./data/processed/labels.csv")
 
-    for label in LABELS: 
-        for i in tqdm(range(1200), desc=f"Label {label}"):
-            try:
-                features = preprocess_image(f"{dataset_path}/data/{label}/{i}.jpg")
-                feature_with_label = features.tolist() + [ord(label) - 49]
-                all_features.append(feature_with_label)
-            except Exception as e:
-                print(f"Skipping {label}/{i}.jpg: {e}")
+    # For correct data split
+    test_samples_per_label = 2
+    label_counters = {label_id: 0 for label_id in lab2id.values()}
+
+    # Processing landmarks
+    train_data = []
+    test_data = []
+    augmented_train = []
+    augmented_test = []
+    with open("./data/raw/slovo_mediapipe.json", "r") as input_file:
+        for gesture_id, sequence in tqdm(ijson.kvitems(input_file, ""), desc="Processing landmarks", total=20000):
+            if len(sequence) <= 0:
                 continue
+            # if uuid2lab[gesture_id] in list(range(500)):
+            #     continue
+            frames = []
+            # Extracting each feature
+            for frame in sequence:
+                frame_landmarks = np.zeros(84, dtype=np.float16)
 
-    all_features = np.array(all_features, dtype=np.float32)
-    columns = [f"f{j}" for j in range(84)] + ["label"]
-    features_df = pd.DataFrame(all_features, columns=columns)
+                if 'hand 1' in frame:
+                    frame_landmarks[0:21] = [lm['x'] for lm in frame['hand 1']]
+                    frame_landmarks[21:42] = [lm['y'] for lm in frame['hand 1']]
 
-    features_df.to_csv(f"{out_path}/hand_landmarks_features.csv", index=False)
+                if 'hand 2' in frame:
+                    frame_landmarks[42:63] = [lm['x'] for lm in frame['hand 2']]
+                    frame_landmarks[63:84] = [lm['y'] for lm in frame['hand 2']]
 
-    print("Dataset shape:", features_df.shape)
+                frames.append(normalize_frame(frame_landmarks))
+
+            gesture_landmarks = np.vstack(frames) if frames else np.zeros((0, 84), dtype=np.float32)
+
+            if label_counters[uuid2lab[gesture_id]] < test_samples_per_label:
+                test_data.append((gesture_landmarks, uuid2lab[gesture_id]))
+                label_counters[uuid2lab[gesture_id]] += 1
+
+                for _ in range(translate_items):
+                    transtaled = random_translate(gesture_landmarks)
+                    augmented_test.append((transtaled, uuid2lab[gesture_id]))
+                for _ in range(noise_items):
+                    noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
+                    augmented_test.append((noise_gesture, uuid2lab[gesture_id]))
+            else:
+                train_data.append((gesture_landmarks, uuid2lab[gesture_id]))
+
+                for _ in range(translate_items):
+                    transtaled = random_translate(gesture_landmarks)
+                    augmented_train.append((transtaled, uuid2lab[gesture_id]))
+                for _ in range(noise_items):
+                    noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
+                    augmented_train.append((noise_gesture, uuid2lab[gesture_id]))
+
+    train_data = train_data + augmented_train    
+    train_data_list = [(gesture.tolist(), label) for gesture, label in train_data]
+    train_df = pd.DataFrame(train_data_list, columns=["features", "label"])
+    del train_data_list
+    del train_data
+    train_df.to_parquet("./data/processed/train.parquet", engine="pyarrow")
+
+    test_data = test_data + augmented_test
+    test_data_list = [(gesture.tolist(), label) for gesture, label in test_data]
+    test_df = pd.DataFrame(test_data_list, columns=["features", "label"])
+    del test_data_list
+    del test_data
+    test_df.to_parquet("./data/processed/test.parquet", engine="pyarrow")
+
+    print(f"Total lables:\t\t\t{len(train_df['label'].unique())}")
+    print(f"Test dataset size:\t\t{len(test_df)}")
+    print(f"Original train dataset size:\t{len(train_df) - len(augmented_train)}")
+    print(f"Augmented train dataset size:\t{len(train_df)}")
+    print("Dataset example:\n", train_df.head())
+
 
 if __name__ == "__main__":
-    dataset_path = get_kaggle_dataset("./data/raw/")
+    dataset_path = "./data/raw"
     out_path = "./data/processed"
-    preprocess_dataset(dataset_path, out_path)
+    preprocess_slovo_dataset(dataset_path, out_path, 5, 5)
