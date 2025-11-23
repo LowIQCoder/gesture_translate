@@ -9,14 +9,8 @@ from os import PathLike
 from typing import Tuple
 
 class LandmarkDataset(Dataset):
-    def __init__(self, dataset_path: str, max_seq_len: int = None):
+    def __init__(self, dataset_path: str):
         self.df = pd.read_parquet(dataset_path)
-        if max_seq_len is None:
-            max_seq_len = 0
-            for row in self.df['features']:
-                if len(row) > max_seq_len:
-                    max_seq_len = len(row)
-        self.max_seq_len = max_seq_len
 
     def __len__(self):
         return len(self.df)
@@ -24,23 +18,11 @@ class LandmarkDataset(Dataset):
     def __getitem__(self, idx):
         features = self.df.iloc[idx]['features']
         label = self.df.iloc[idx]['label']
-        
-        tensors = [torch.from_numpy(a.copy()).float() for a in features]
-        row_tensor = torch.stack(tensors)
-        
-        if len(row_tensor) < self.max_seq_len:
-            pad_size = self.max_seq_len - len(row_tensor)
-            padded = torch.cat([
-                row_tensor, 
-                torch.zeros(pad_size, 84)
-            ], dim=0)
-        elif len(row_tensor) > self.max_seq_len:
-            padded = row_tensor[:self.max_seq_len]
-        else:
-            padded = row_tensor
-        
-        return padded, label        
 
+        features = torch.tensor(features, dtype=torch.float32)
+        label = torch.tensor(label, dtype=torch.long)
+
+        return features, label
 
 def get_dataloaders(
     path_to_dataset: str | PathLike,
@@ -66,7 +48,7 @@ def get_dataloaders(
     )
   
     val_loader = DataLoader(
-        test_dataset,
+        val_dataset,
         batch_size=batch_size,
     )
 

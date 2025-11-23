@@ -22,7 +22,7 @@ class PositionalEncoding(nn.Module):
 class GestureTransformer(nn.Module):
     def __init__(
         self,
-        num_classes: int = 1001,
+        num_classes: int = 34,
         d_model: int = 84,
         d_ff: int = 256,
         num_encoders: int = 3,

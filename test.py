@@ -1,9 +1,6 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 import cv2
 import mediapipe as mp
 import numpy as np
-import base64
 import time
 import onnxruntime as ort
 from data.features import landmarks_to_features
@@ -12,57 +9,52 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-app = Flask(__name__)
-CORS(app)
-
 class GestureRecognizer:
     def __init__(self, model_path: str):
         self.session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
         self.input_name = self.session.get_inputs()[0].name
-        
         self.idx2label = pd.read_csv("./data/processed/labels.csv")["0"].tolist()
-        
+
         self.hands = mp.solutions.hands.Hands(
             static_image_mode=False,
             max_num_hands=2,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
-        
+
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+
         self.frame_buffer = []
         self.sequence_length = 120
         self.feature_size = 84
 
-    def process_frame(self, frame_data: str) -> dict:
-        """Process single frame and add to buffer"""
+    def process_frame(self, frame) -> dict:
+        """Process a single frame and add to buffer"""
         try:
-            # Decode base64 image
-            image_data = base64.b64decode(frame_data.split(',')[1])
-            nparr = np.frombuffer(image_data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            if frame is None:
-                return {'error': 'Failed to decode image'}
-            
-            # Process with MediaPipe
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = self.hands.process(rgb_frame)
-            
-            # Extract features
             features = landmarks_to_features(results)
-            
-            # Add to buffer (ensure correct shape)
+
+            # Draw landmarks on the frame
+            if results.multi_hand_landmarks:
+                for hand_landmarks in results.multi_hand_landmarks:
+                    self.mp_drawing.draw_landmarks(
+                        frame,
+                        hand_landmarks,
+                        mp.solutions.hands.HAND_CONNECTIONS,
+                        self.mp_drawing_styles.get_default_hand_landmarks_style(),
+                        self.mp_drawing_styles.get_default_hand_connections_style()
+                    )
+
             if features is not None and len(features) == self.feature_size:
                 self.frame_buffer.append(features)
-                
-                # Keep only last 120 frames
                 if len(self.frame_buffer) > self.sequence_length:
                     self.frame_buffer.pop(0)
-                
                 return {'status': 'frame_added', 'buffer_size': len(self.frame_buffer)}
             else:
                 return {'status': 'no_hands_detected', 'buffer_size': len(self.frame_buffer)}
-                
+
         except Exception as e:
             return {'error': str(e)}
 
@@ -72,27 +64,20 @@ class GestureRecognizer:
             return {'error': f'Not enough frames. Need {self.sequence_length}, have {len(self.frame_buffer)}'}
 
         preprocessing_start = time.time()
-
-        # Convert frame buffer to [batch, seq_len, feature_size]
         input_tensor = np.expand_dims(np.array(self.frame_buffer, dtype=np.float32), axis=0)
-
         preprocessing_time = (time.time() - preprocessing_start) * 1000
 
-        # Run inference
         inference_start = time.time()
         outputs = self.session.run(None, {self.input_name: input_tensor})
         inference_time = (time.time() - inference_start) * 1000
 
-        # ONNX model should output logits for all classes: shape [num_classes] or [1, num_classes]
         logits = outputs[0]
         if logits.ndim == 2 and logits.shape[0] == 1:
-            logits = logits[0]  # remove batch dim
+            logits = logits[0]
 
-        # Softmax
-        exp_logits = np.exp(logits - np.max(logits))  # for numerical stability
+        exp_logits = np.exp(logits - np.max(logits))
         probs = exp_logits / np.sum(exp_logits)
 
-        # Prediction
         pred_idx = int(np.argmax(probs))
         pred_label = self.idx2label[pred_idx]
         confidence = float(probs[pred_idx] * 100)
@@ -106,52 +91,43 @@ class GestureRecognizer:
         return {
             'gesture': pred_label,
             'confidence': confidence,
-            'embeddings': top_predictions,
+            'top_predictions': top_predictions,
             'preprocessing_time': preprocessing_time,
             'inference_time': inference_time
         }
 
+def main():
+    recognizer = GestureRecognizer("./data/models/gesture_transformer.onnx")
+    cap = cv2.VideoCapture(0)
 
-# Initialize recognizer
-recognizer = GestureRecognizer("./data/models/gesture_transformer.onnx")
+    if not cap.isOpened():
+        print("Error: Could not open webcam.")
+        return
 
-@app.route('/api/process_frame', methods=['POST'])
-def process_frame():
-    """Add frame to buffer and predict if sequence is complete"""
-    data = request.get_json()
-    frame_data = data.get('frame')
-    
-    if not frame_data:
-        return jsonify({'error': 'No frame data provided'}), 400
-    
-    # Process frame and add to buffer
-    result = recognizer.process_frame(frame_data)
-    
-    # If buffer is full, run prediction
-    print(f"Buffer  {len(recognizer.frame_buffer)}")
-    if recognizer.frame_buffer and len(recognizer.frame_buffer) == recognizer.sequence_length:
-        prediction = recognizer.predict_gesture()
-        result.update(prediction)
-    
-    return jsonify(result)
+    print("Starting gesture recognition. Press 'q' to quit.")
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-@app.route('/api/reset_buffer', methods=['POST'])
-def reset_buffer():
-    """Reset the frame buffer"""
-    recognizer.frame_buffer.clear()
-    return jsonify({'status': 'buffer_cleared'})
+        result = recognizer.process_frame(frame)
 
-@app.route('/api/buffer_status', methods=['GET'])
-def buffer_status():
-    """Get current buffer status"""
-    return jsonify({
-        'buffer_size': len(recognizer.frame_buffer),
-        'required_size': recognizer.sequence_length
-    })
+        # Predict if buffer is full
+        if len(recognizer.frame_buffer) == recognizer.sequence_length:
+            prediction = recognizer.predict_gesture()
+            print(f"Predicted Gesture: {prediction['gesture']}, Confidence: {prediction['confidence']:.2f}%")
+            print("Top-3 predictions:", prediction['top_predictions'])
+            cv2.putText(frame, f"{prediction['gesture']} ({prediction['confidence']:.1f}%)",
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'healthy'})
+        # Show webcam feed
+        cv2.imshow("Gesture Recognition", frame)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=False)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()

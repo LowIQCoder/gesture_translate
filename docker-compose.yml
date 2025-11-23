@@ -17,6 +17,37 @@ x-airflow-common:
       condition: service_healthy
 
 services:
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile.backend
+    container_name: backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src/backend:/app/src/backend
+      - ./data:/app/data
+      - ./src/utils:/app/src/utils
+    environment:
+      - PORT=8000
+      - PYTHONPATH=/app
+      - FLASK_APP=src/backend/app.py
+    restart: always
+
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    volumes:
+      - ./static:/usr/share/nginx/html/static
+      - ./templates:/usr/share/nginx/html/templates
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=80
+
   mlflow:
     image: ghcr.io/mlflow/mlflow
     container_name: mlflow

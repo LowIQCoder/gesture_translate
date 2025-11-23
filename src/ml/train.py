@@ -342,7 +342,7 @@ def test_epoch(
 
 if __name__ == "__main__":
     # Model params
-    NUM_CLASSES = 500
+    NUM_CLASSES = 35
     DIM_MODEL = 128
     DIM_FF = 256
     NUM_ENCODERS = 6
@@ -357,7 +357,7 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     EPOCHS = 300 
     PATIENCE = 10
-    BATCH_SIZE = 256
+    BATCH_SIZE = 64
     SEED = 42
 
     # Fixing random
@@ -444,12 +444,12 @@ if __name__ == "__main__":
                 "n_heads": str(NUM_HEADS),
                 "dropout": str(DROPOUT)
             },
-            input_example=np.zeros((1, 42, 84), dtype=np.float32)
+            input_example=np.zeros((1, 84), dtype=np.float32)
         )
         model.to(DEVICE)
 
         with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
-            f.write(str(summary(model, input_size=(1, 1, 84), device=DEVICE, verbose=0)))
+            f.write(str(summary(model, input_size=(1, 84), device=DEVICE, verbose=0)))
 
         with open("./data/models/model_configuration.json", "w", encoding="utf-8") as f:
             json.dump({
@@ -528,7 +528,7 @@ if __name__ == "__main__":
         )
 
         # [batch_size, sequence_length, features]
-        dummy_input = torch.randn(120, 84, requires_grad=False)
+        dummy_input = torch.randn(1, 84, requires_grad=False)
 
         # Export to ONNX
         torch.onnx.export(
