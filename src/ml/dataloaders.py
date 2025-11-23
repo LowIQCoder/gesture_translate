@@ -25,7 +25,7 @@ class LandmarkDataset(Dataset):
         features = self.df.iloc[idx]['features']
         label = self.df.iloc[idx]['label']
         
-        tensors = [torch.from_numpy(a).float() for a in features]
+        tensors = [torch.from_numpy(a.copy()).float() for a in features]
         row_tensor = torch.stack(tensors)
         
         if len(row_tensor) < self.max_seq_len:
@@ -43,32 +43,36 @@ class LandmarkDataset(Dataset):
 
 
 def get_dataloaders(
-    path_to_train: str | PathLike,
-    path_to_test: str | PathLike,
+    path_to_dataset: str | PathLike,
     batch_size: int
 ) -> Tuple[DataLoader, DataLoader]:
     """Generate DataLoaders from preprocessed data
 
     Args:
         path_to_dataset (str, PathLike): Path to preprocessed dataset in parquet format
-        batch_size (int): Size of batch for DataLoader
         max_seq_len (int): Maximum sequence length (longer sequences will be truncated)
     
     Returns:
         Tuple: Training, Validation and Test DataLoaders
     """
-    train_dataset = LandmarkDataset(path_to_train)
-    test_dataset = LandmarkDataset(path_to_test)
+    train_dataset = LandmarkDataset(path_to_dataset + "train.parquet")
+    val_dataset = LandmarkDataset(path_to_dataset + "val.parquet")
+    test_dataset = LandmarkDataset(path_to_dataset + "test.parquet")
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
     )
-        
+  
     val_loader = DataLoader(
         test_dataset,
         batch_size=batch_size,
     )
 
-    return train_loader, val_loader
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+    )
+
+    return train_loader, val_loader, test_loader

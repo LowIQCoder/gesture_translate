@@ -5,7 +5,7 @@ from airflow.sdk import DAG
 
 import os
 
-PROJECT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+PROJECT_DIR = "..."
 
 with DAG(
     dag_id="data_preprocessing",
@@ -19,6 +19,12 @@ with DAG(
     tags=["datadads"]
 ) as dag:
     
+    # Establish server connection
+    connection_tast = BashOperator(
+        task_id="connection_tast",
+        bash_command=f"ssh ..."
+    )
+
     # Preprocess task
     preprocess_task = BashOperator(
         task_id="preprocess_task",
@@ -31,4 +37,4 @@ with DAG(
         bash_command=f"cd {PROJECT_DIR} && python3 -m src.ml.train"
     )
 
-    preprocess_task >> train_task
+    connection_tast >> preprocess_task >> train_task

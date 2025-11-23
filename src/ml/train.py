@@ -13,7 +13,30 @@ from src.ml.dataloaders import get_dataloaders
 from src.ml.model import GestureTransformer
 from torchinfo import summary
 import json
+import random
 
+
+def seed_random(seed: int = 42):
+    """
+    Seed all random number generators for reproducibility.
+    
+    Args:
+        seed (int): Random seed value. Default is 42.
+    """
+    # Python random
+    random.seed(seed)
+    
+    # Numpy
+    np.random.seed(seed)
+    
+    # PyTorch
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    
+    # PyTorch CuDNN deterministic settings
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 def log_metrics(
     metrics_list: list[tuple[str, dict]],
@@ -35,7 +58,7 @@ def log_metrics(
         logs += f"Epoch {epoch_info[0]+1:3d}/{epoch_info[1]} │ "
     for metrics in metrics_list:
         for metric, value in metrics.items():
-            if metric.split("_")[-1] in ["mat", "curve"]:
+            if metric.split("_")[-1] in ["mat", "curve", "lr"]:
                 continue
             logs += f"{metric}: {value:.4f} │ "
 
@@ -101,18 +124,17 @@ def evaluate(
         logging_result_metrics[prefix + "f1"] = f1_score(
             all_labels_np, all_predicted_np, average="macro", zero_division=0
         )
-    
-    if "roc-auc" in metrics and all_probs is not None:
-        all_probs_np = np.array(all_probs)
-
-        roc_auc = roc_auc_score(
-            all_labels_np, all_probs_np, multi_class='ovr', average='macro'
-        )
-        logging_result_metrics[prefix + "roc-auc"] = roc_auc
 
     if "conf_mat" in metrics:
         conf_matrix = confusion_matrix(all_labels_np, all_predicted_np)
-        nonlogging_result_metrics[prefix + "conf_mat"] = conf_matrix
+
+        fig = plt.figure(figsize=(20, 20))
+        sns.heatmap(conf_matrix, fmt='d', cmap='Blues', annot=False)
+        plt.xlabel('Predicted')
+        plt.ylabel('True')
+        plt.title('Confusion Matrix')
+
+        nonlogging_result_metrics[prefix + "conf_mat"] = fig
         logging_result_metrics[prefix + "conf_mat_accuracy"] = np.trace(conf_matrix) / np.sum(conf_matrix)
     
     return logging_result_metrics, nonlogging_result_metrics
@@ -320,26 +342,29 @@ def test_epoch(
 
 if __name__ == "__main__":
     # Model params
-    NUM_CLASSES = 1001
-    DIM_MODEL = 256
-    DIM_FF = 512
-    NUM_ENCODERS = 4
-    NUM_HEADS = 8
-    DROPOUT = 0.5
+    NUM_CLASSES = 500
+    DIM_MODEL = 128
+    DIM_FF = 256
+    NUM_ENCODERS = 6
+    NUM_HEADS = 8   
+    DROPOUT = 0.3
 
     # Training params
     CHECKPOINT_PATH = "./data/models/best_model.pth"
     INIT_LEARNING_RATE = 5e-5
-    MAX_LEARNING_RATE = 2e-5
+    MAX_LEARNING_RATE = 1e-5
     WEIGHT_DECAY = 1e-2
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    EPOCHS = 1
+    EPOCHS = 300 
     PATIENCE = 10
     BATCH_SIZE = 256
+    SEED = 42
+
+    # Fixing random
+    seed_random(SEED)
 
     # Dataoaders
-    train_loader, val_loader = get_dataloaders("./data/processed/train.parquet", "./data/processed/test.parquet", BATCH_SIZE)
-    test_loader = val_loader # TODO Fix
+    train_loader, val_loader, test_loader = get_dataloaders("./data/processed/", BATCH_SIZE)
 
     # Model
     model = GestureTransformer(
@@ -350,20 +375,31 @@ if __name__ == "__main__":
         nheads=NUM_HEADS,       
         dropout=DROPOUT
     ).to(DEVICE)
-
     optimizer = optim.AdamW(
         params=model.parameters(),
         lr=INIT_LEARNING_RATE,
         weight_decay=WEIGHT_DECAY
     )
-
+    
     loss_fn = nn.CrossEntropyLoss()
 
     scaler = torch.amp.GradScaler()
 
+    # Defining scheduler
+    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    #     optimizer,
+    #     max_lr=MAX_LEARNING_RATE,
+    #     epochs=EPOCHS,
+    #     steps_per_epoch=len(train_loader),
+    #     pct_start=0.2,
+    #     div_factor=10,
+    #     final_div_factor=100
+    # )
+
     # Training variables
     best_metrics = {
-        "accuracy": 0
+        "accuracy": 0,
+        "loss": 1000
     }
     no_improvements = 0
 
@@ -377,33 +413,10 @@ if __name__ == "__main__":
     except:
         print("No checkpoint found. Skipping")
 
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=MAX_LEARNING_RATE,
-        epochs=EPOCHS,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.15,
-        div_factor=10,
-        final_div_factor=100
-    )
-
-    with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
-        f.write(str(summary(model, input_size=(1, 1, 84))))
-    
-    with open("./data/models/model_configuration.json", "w", encoding="utf-8") as f:
-        json.dump({
-            "num_classes": 1001,
-            "dim_model": 256,
-            "dim_ff": 256,
-            "num_encoders": 6,
-            "num_heads": 8,
-            "dropout": 0.5
-        }, f)
-
-    mlflow.set_tracking_uri("http://127.0.0.1:5000")
-
+    # Setting up mlflow
+    mlflow.set_tracking_uri("http://89.223.126.78:1333")
     with mlflow.start_run(log_system_metrics=True) as run:
-        # Logging 
+        # Logging experement parameters
         mlflow.log_params({
             "max_lr": MAX_LEARNING_RATE,
             "init_lr": INIT_LEARNING_RATE,
@@ -411,14 +424,47 @@ if __name__ == "__main__":
             "device": DEVICE,
             "epochs": EPOCHS,
             "patience": PATIENCE,
-            "batch_size": BATCH_SIZE
+            "batch_size": BATCH_SIZE,
+            "seed": SEED
         })
+
+        # Logging model information
+        model.to("cpu")
+        model_info = mlflow.pytorch.log_model(
+            model,
+            name="model",
+            registered_model_name="GestureTransformer",
+            pip_requirements="requirements.txt",
+            await_registration_for=0,
+            params={
+                "num_classes": str(NUM_CLASSES),
+                "d_model": str(DIM_MODEL),
+                "d_ff": str(DIM_FF),
+                "num_encoders": str(NUM_ENCODERS),
+                "n_heads": str(NUM_HEADS),
+                "dropout": str(DROPOUT)
+            },
+            input_example=np.zeros((1, 42, 84), dtype=np.float32)
+        )
+        model.to(DEVICE)
+
+        with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
+            f.write(str(summary(model, input_size=(1, 1, 84), device=DEVICE, verbose=0)))
+
+        with open("./data/models/model_configuration.json", "w", encoding="utf-8") as f:
+            json.dump({
+                "num_classes": NUM_CLASSES,
+                "d_model": DIM_MODEL,
+                "d_ff": DIM_FF,
+                "num_encoders": NUM_ENCODERS,
+                "nheads": NUM_HEADS,
+                "dropout": DROPOUT
+            }, f)
 
         mlflow.log_artifact("./data/models/model_summary.txt")
         mlflow.log_artifact("./data/models/model_configuration.json")
 
         # Training and validation
-        model.to(DEVICE)
         for epoch in range(EPOCHS):
             # Training
             train_metrics = train_epoch(
@@ -429,8 +475,8 @@ if __name__ == "__main__":
                 device=DEVICE,
                 epoch_info=(epoch, EPOCHS),
                 scaler=scaler,
-                scheduler=scheduler,
-                metrics=["avg_loss", "accuracy", "f1"]
+                # scheduler=scheduler,
+                metrics=["avg_loss", "accuracy", "f1", "batch_time"]
             )
 
             # Validating
@@ -445,7 +491,8 @@ if __name__ == "__main__":
             )
 
             # Saving model checkpoint
-            if val_metrics[0]["val_accuracy"] > best_metrics["accuracy"]:
+            if val_metrics[0]["val_avg_loss"] < best_metrics["loss"] or val_metrics[0]["val_accuracy"] > best_metrics["accuracy"]:
+                best_metrics["loss"] = val_metrics[0]["val_avg_loss"]
                 best_metrics["accuracy"] = val_metrics[0]["val_accuracy"]
                 torch.save({
                     "model_state_dict": model.state_dict(),
@@ -480,14 +527,30 @@ if __name__ == "__main__":
             metrics=["avg_loss", "accuracy", "f1", "conf_mat"]
         )
 
+        # [batch_size, sequence_length, features]
+        dummy_input = torch.randn(120, 84, requires_grad=False)
+
+        # Export to ONNX
+        torch.onnx.export(
+            model,
+            dummy_input,
+            "./data/models/gesture_transformer.onnx",
+            export_params=True,
+            opset_version=18,
+            do_constant_folding=True,
+            input_names=['input'],
+            output_names=['output']
+        )
+
+        # Logging test metrics
         log_metrics([test_metrics[0]], epoch_info=(EPOCHS+1, EPOCHS))
 
         mlflow.log_metrics(test_metrics[0])
 
-        fig = plt.figure(figsize=(20, 20))
-        sns.heatmap(test_metrics[1]["test_conf_mat"], fmt='d', cmap='Blues', annot=False)
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
+        # Saving best model
+        mlflow.log_artifact("./data/models/best_model.pth")
+        mlflow.log_artifact("./data/models/gesture_transformer.onnx")
 
-        mlflow.log_figure(fig)
-        
+        # Confussion matrix
+        mlflow.log_figure(test_metrics[1]["test_conf_mat"], "confusion_matrix.png")
+        plt.close(test_metrics[1]["test_conf_mat"])

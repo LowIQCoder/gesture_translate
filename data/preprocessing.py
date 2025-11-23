@@ -68,33 +68,10 @@ def preprocess_video(video_path: PathLike):
     video.release()
     return features
 
-def normalize_frame(frame):
-    """
-    Normalize 2D hand landmarks (42 values: 21 x, 21 y) by:
-    1. Centering the coordinates around the mean (or wrist).
-    2. Scaling so that the maximum distance from center = 1.
-    """
-    frame = frame.astype(np.float32)
-    x = frame[:42]
-    y = frame[42:]
-
-    coords = np.stack([x, y], axis=1)
-
-    center = coords.mean(axis=0)
-    coords -= center
-
-    scale = np.linalg.norm(coords, axis=1).max()
-    if scale > 0:
-        coords /= scale
-
-    normalized = coords.flatten().astype(np.float16)
-    return normalized
-
-
 def add_noise(gesture, mean, std):
     new_gesture = np.copy(gesture)
-    noise = np.random.normal(mean, std, 84)
     for frame in new_gesture:
+        noise = np.random.normal(mean, std, 84)
         frame += noise
     return new_gesture
 
@@ -110,39 +87,43 @@ def random_translate(gesture):
 def preprocess_slovo_dataset(
         dataset_path: str | PathLike,
         out_path: str | PathLike,
-        noise_items = 5,
-        translate_items = 5
+        noise_items=5,
+        translate_items=5
     ) -> None:
-    """Preprocess the dataset and save the features to a CSV file.
+    """Preprocess the dataset and save the features to CSV files.
 
     Args:
         dataset_path (str | PathLike): The path to the dataset.
         out_path (str | PathLike): The path to save the processed features.
     """
-    # Attechment UUID to categorical label
+    # Attachment UUID to categorical label
     labels_df = pd.read_csv("./data/raw/annotations.csv")  
-    lab2id = {s:i for i, s in enumerate(labels_df['text'].unique())}
+    lab2id = {s: i for i, s in enumerate(labels_df['text'].unique())}
     uuid2lab = {row.attachment_id: lab2id[row.text] for row in labels_df.itertuples(index=False)}
 
     # Label to category index
     lab2id_df = pd.DataFrame([list(lab2id.keys()), list(lab2id.values())]).transpose()
     lab2id_df.to_csv("./data/processed/labels.csv")
 
-    # For correct data split
+    # For correct data split - guarantee samples per split
     test_samples_per_label = 2
-    label_counters = {label_id: 0 for label_id in lab2id.values()}
+    val_samples_per_label = 2  # Same as test set
+    label_counters = {label_id: {'test': 0, 'val': 0, 'train': 0} for label_id in lab2id.values()}
 
     # Processing landmarks
     train_data = []
+    val_data = []  # New validation set
     test_data = []
     augmented_train = []
+    augmented_val = []  # Augmented validation data
     augmented_test = []
+    
     with open("./data/raw/slovo_mediapipe.json", "r") as input_file:
         for gesture_id, sequence in tqdm(ijson.kvitems(input_file, ""), desc="Processing landmarks", total=20000):
             if len(sequence) <= 0:
                 continue
-            # if uuid2lab[gesture_id] in list(range(500)):
-            #     continue
+            if uuid2lab[gesture_id] not in list(range(500)):
+                continue
             frames = []
             # Extracting each feature
             for frame in sequence:
@@ -156,49 +137,93 @@ def preprocess_slovo_dataset(
                     frame_landmarks[42:63] = [lm['x'] for lm in frame['hand 2']]
                     frame_landmarks[63:84] = [lm['y'] for lm in frame['hand 2']]
 
-                frames.append(normalize_frame(frame_landmarks))
+                frames.append(frame_landmarks)
 
             gesture_landmarks = np.vstack(frames) if frames else np.zeros((0, 84), dtype=np.float32)
+            label = uuid2lab[gesture_id]
 
-            if label_counters[uuid2lab[gesture_id]] < test_samples_per_label:
-                test_data.append((gesture_landmarks, uuid2lab[gesture_id]))
-                label_counters[uuid2lab[gesture_id]] += 1
-
+            # Split logic: test -> val -> train
+            if label_counters[label]['test'] < test_samples_per_label:
+                # Assign to test set
+                test_data.append((gesture_landmarks, label))
+                label_counters[label]['test'] += 1
+                
+                # Augment test data
                 for _ in range(translate_items):
-                    transtaled = random_translate(gesture_landmarks)
-                    augmented_test.append((transtaled, uuid2lab[gesture_id]))
+                    translated = random_translate(gesture_landmarks)
+                    augmented_test.append((translated, label))
                 for _ in range(noise_items):
                     noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
-                    augmented_test.append((noise_gesture, uuid2lab[gesture_id]))
+                    augmented_test.append((noise_gesture, label))     
+            elif label_counters[label]['val'] < val_samples_per_label:
+                # Assign to validation set
+                val_data.append((gesture_landmarks, label))
+                label_counters[label]['val'] += 1
+                
+                # Augment validation data
+                for _ in range(translate_items):
+                    translated = random_translate(gesture_landmarks)
+                    augmented_val.append((translated, label))
+                for _ in range(noise_items):
+                    noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
+                    augmented_val.append((noise_gesture, label))     
             else:
-                train_data.append((gesture_landmarks, uuid2lab[gesture_id]))
-
+                # Assign to training set
+                train_data.append((gesture_landmarks, label))
+                label_counters[label]['train'] += 1
+                
+                # Augment training data
                 for _ in range(translate_items):
-                    transtaled = random_translate(gesture_landmarks)
-                    augmented_train.append((transtaled, uuid2lab[gesture_id]))
+                    translated = random_translate(gesture_landmarks)
+                    augmented_train.append((translated, label))
                 for _ in range(noise_items):
                     noise_gesture = add_noise(gesture_landmarks, 0.002, 0.003)
-                    augmented_train.append((noise_gesture, uuid2lab[gesture_id]))
+                    augmented_train.append((noise_gesture, label))
 
+    # Combine original data with augmented data
     train_data = train_data + augmented_train    
+    val_data = val_data + augmented_val
+    test_data = test_data + augmented_test
+
+    # Convert to DataFrames and save
+    # Training set
     train_data_list = [(gesture.tolist(), label) for gesture, label in train_data]
     train_df = pd.DataFrame(train_data_list, columns=["features", "label"])
-    del train_data_list
-    del train_data
     train_df.to_parquet("./data/processed/train.parquet", engine="pyarrow")
 
-    test_data = test_data + augmented_test
+    # Validation set
+    val_data_list = [(gesture.tolist(), label) for gesture, label in val_data]
+    val_df = pd.DataFrame(val_data_list, columns=["features", "label"])
+    val_df.to_parquet("./data/processed/val.parquet", engine="pyarrow")
+
+    # Test set
     test_data_list = [(gesture.tolist(), label) for gesture, label in test_data]
     test_df = pd.DataFrame(test_data_list, columns=["features", "label"])
-    del test_data_list
-    del test_data
     test_df.to_parquet("./data/processed/test.parquet", engine="pyarrow")
 
-    print(f"Total lables:\t\t\t{len(train_df['label'].unique())}")
-    print(f"Test dataset size:\t\t{len(test_df)}")
-    print(f"Original train dataset size:\t{len(train_df) - len(augmented_train)}")
-    print(f"Augmented train dataset size:\t{len(train_df)}")
-    print("Dataset example:\n", train_df.head())
+    # Print dataset statistics
+    print_dataset_statistics(label_counters, lab2id, train_data, val_data, test_data)
+
+def print_dataset_statistics(label_counters, lab2id, train_data, val_data, test_data):
+    """Print detailed statistics about the dataset split"""
+    
+    print("\n=== Dataset Split Statistics ===")
+    print(f"Total classes: {len(lab2id)}")
+    print(f"Training samples: {len(train_data)}")
+    print(f"Validation samples: {len(val_data)}")
+    print(f"Test samples: {len(test_data)}")
+    print(f"Total samples: {len(train_data) + len(val_data) + len(test_data)}")
+    
+    print("\n=== Samples per Class ===")
+    for label_id in sorted(lab2id.values()):
+        label_name = list(lab2id.keys())[list(lab2id.values()).index(label_id)]
+        train_count = label_counters[label_id]['train']
+        val_count = label_counters[label_id]['val']
+        test_count = label_counters[label_id]['test']
+        total_count = train_count + val_count + test_count
+        
+        print(f"Class {label_id} ({label_name}): "
+              f"Train={train_count}, Val={val_count}, Test={test_count}, Total={total_count}")
 
 
 if __name__ == "__main__":
