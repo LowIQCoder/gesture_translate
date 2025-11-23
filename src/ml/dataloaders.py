@@ -1,37 +1,60 @@
-from torch.utils.data import TensorDataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader, random_split
 from torch import tensor, float32, long
+from torch.nn.utils.rnn import pad_sequence
+import torch
 import pandas as pd
+import numpy as np
 
 from os import PathLike
 from typing import Tuple
 
+class LandmarkDataset(Dataset):
+    def __init__(self, dataset_path: str):
+        self.df = pd.read_parquet(dataset_path)
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        features = self.df.iloc[idx]['features']
+        label = self.df.iloc[idx]['label']
+
+        features = torch.tensor(features, dtype=torch.float32)
+        label = torch.tensor(label, dtype=torch.long)
+
+        return features, label
+
 def get_dataloaders(
     path_to_dataset: str | PathLike,
-    split: float,
     batch_size: int
 ) -> Tuple[DataLoader, DataLoader]:
     """Generate DataLoaders from preprocessed data
 
     Args:
-        path_to_dataset (str, PathLike): Path to preprocessed dataset in csv format
-        split (float): Split ratio of training and validating datasets
-        batch_size (int): Size of batch for DataLoader
+        path_to_dataset (str, PathLike): Path to preprocessed dataset in parquet format
+        max_seq_len (int): Maximum sequence length (longer sequences will be truncated)
     
     Returns:
-        Tuple: Training and Validation DataLoaders
+        Tuple: Training, Validation and Test DataLoaders
     """
-    df = pd.read_csv(path_to_dataset)
-    features = df.iloc[:, :-1].values.tolist()
-    labels = df.iloc[:, -1].values.tolist()
+    train_dataset = LandmarkDataset(path_to_dataset + "train.parquet")
+    val_dataset = LandmarkDataset(path_to_dataset + "val.parquet")
+    test_dataset = LandmarkDataset(path_to_dataset + "test.parquet")
 
-    dataset = TensorDataset(tensor(features, dtype=float32), tensor(labels, dtype=long))
-
-    train_dataset, val_dataset = random_split(
-        dataset,
-    [(int(len(dataset) * split)), len(dataset) - int(len(dataset) * split)],
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+    )
+  
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
     )
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+    )
 
-    return train_loader, val_loader
+    return train_loader, val_loader, test_loader
