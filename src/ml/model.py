@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+model_example_input = torch.rand((1, 84))
+
 class GestureModel(nn.Module):
     def __init__(
         self,
@@ -45,9 +47,7 @@ class GestureModel(nn.Module):
 if __name__ == "__main__":
     model = GestureModel()
 
-    # Single sample: (batch_size=1, features=84)
-    example_input = torch.rand((1, 84))
-    logits = model(example_input)
+    logits = model(model_example_input)
 
-    print(f"Input shape: {example_input.shape}")
+    print(f"Input shape: {model_example_input.shape}")
     print(f"Logits shape: {logits.shape}")

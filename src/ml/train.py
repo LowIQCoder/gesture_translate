@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import logging
 from src.ml.dataloaders import get_dataloaders
-from src.ml.model import GestureModel
+from src.ml.model import GestureModel, model_example_input
 from torchinfo import summary
 import json
 import random
@@ -342,20 +342,20 @@ def test_epoch(
 
 if __name__ == "__main__":
     # Model params
-    NUM_CLASSES = 35
-    DIM_MODEL = 84
-    DIM_FF = 128
-    NUM_ENCODERS = 4
-    NUM_HEADS = 4   
-    DROPOUT = 0.3
+    params = {
+        "num_classes": 35,
+        "d_model": 84,
+        "d_hidden": 128,
+        "dropout": 0.3
+    }
 
     # Training params
     CHECKPOINT_PATH = "./data/models/best_model.pth"
-    INIT_LEARNING_RATE = 5e-5
-    MAX_LEARNING_RATE = 1e-5
+    MAX_LEARNING_RATE = 5e-5
+    DIV_FACTOR = 10
     WEIGHT_DECAY = 1e-2
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    EPOCHS = 150
+    EPOCHS = 100
     PATIENCE = 10
     BATCH_SIZE = 512
     SEED = 42
@@ -367,40 +367,38 @@ if __name__ == "__main__":
     train_loader, val_loader, test_loader = get_dataloaders("./data/processed/", BATCH_SIZE)
 
     # Model
-    model = GestureModel(
-        num_classes=NUM_CLASSES,
-        d_model=DIM_MODEL,
-        d_hidden=DIM_FF,    
-        dropout=DROPOUT
-    ).to(DEVICE)
+    model = GestureModel(**params).to(DEVICE)
 
+    # Loss function
+    loss_fn = nn.CrossEntropyLoss()
+
+    # Optimize
     optimizer = optim.AdamW(
         params=model.parameters(),
-        lr=INIT_LEARNING_RATE,
+        lr=MAX_LEARNING_RATE / DIV_FACTOR,
         weight_decay=WEIGHT_DECAY
     )
     
-    loss_fn = nn.CrossEntropyLoss()
-
+    # Grad scaler
     scaler = torch.amp.GradScaler()
 
     # Defining scheduler
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    #     optimizer,
-    #     max_lr=MAX_LEARNING_RATE,
-    #     epochs=EPOCHS,
-    #     steps_per_epoch=len(train_loader),
-    #     pct_start=0.2,
-    #     div_factor=10,
-    #     final_div_factor=100
-    # )
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=MAX_LEARNING_RATE,
+        epochs=EPOCHS,
+        steps_per_epoch=len(train_loader),
+        pct_start=0.2,
+        div_factor=DIV_FACTOR,
+        final_div_factor=100
+    )
 
     # Training variables
     best_metrics = {
         "accuracy": 0,
         "loss": 1000
     }
-    no_improvements = 0
+    patience = 0
 
     # Loading model checkpoint if exists
     try:
@@ -414,11 +412,12 @@ if __name__ == "__main__":
 
     # Setting up mlflow
     mlflow.set_tracking_uri("http://89.223.126.78:1333")
+
     with mlflow.start_run(log_system_metrics=True) as run:
         # Logging experement parameters
         mlflow.log_params({
             "max_lr": MAX_LEARNING_RATE,
-            "init_lr": INIT_LEARNING_RATE,
+            "div_factor": DIV_FACTOR,
             "weight_decay": WEIGHT_DECAY,
             "device": DEVICE,
             "epochs": EPOCHS,
@@ -435,28 +434,19 @@ if __name__ == "__main__":
             registered_model_name="GestureModel",
             pip_requirements="requirements.txt",
             await_registration_for=0,
-            params={
-                "num_classes": str(NUM_CLASSES),
-                "d_model": str(DIM_MODEL),
-                "d_hidden": str(DIM_FF),
-                "dropout": str(DROPOUT)
-            },
-            input_example=np.zeros((1, 84), dtype=np.float32)
+            params=params,
+            input_example=model_example_input.numpy()
         )
         model.to(DEVICE)
 
+        # Saving model architecture
         with open("./data/models/model_summary.txt", "w", encoding="utf-8") as f:
-            f.write(str(summary(model, input_size=(1, 84), device=DEVICE, verbose=0)))
-
-        with open("./data/models/model_configuration.json", "w", encoding="utf-8") as f:
-            json.dump({
-                "num_classes": str(NUM_CLASSES),
-                "d_model": str(DIM_MODEL),
-                "d_hidden": str(DIM_FF),
-                "dropout": str(DROPOUT)
-            }, f)
-
+            f.write(str(summary(model, input_data=model_example_input, device=DEVICE, verbose=0)))
         mlflow.log_artifact("./data/models/model_summary.txt")
+
+        # SAving model configuration
+        with open("./data/models/model_configuration.json", "w", encoding="utf-8") as f:
+            json.dump(params, f)
         mlflow.log_artifact("./data/models/model_configuration.json")
 
         # Training and validation
@@ -470,7 +460,7 @@ if __name__ == "__main__":
                 device=DEVICE,
                 epoch_info=(epoch, EPOCHS),
                 scaler=scaler,
-                # scheduler=scheduler,
+                scheduler=scheduler,
                 metrics=["avg_loss", "accuracy", "f1", "batch_time"]
             )
 
@@ -494,20 +484,19 @@ if __name__ == "__main__":
                     "optim_state_dict": optimizer.state_dict(),
                     "best_metrics": best_metrics
                 }, CHECKPOINT_PATH)
-                no_improvements = 0
+                patience = 0
 
                 print(f"Epoch {epoch+1:3d}/{EPOCHS} │ Saved new best model with accuracy: { best_metrics["accuracy"]}")
             else:
-                no_improvements += 1
+                patience += 1
 
-            # Logging metrics to console
+            # Logging metrics
             log_metrics([train_metrics[0], val_metrics[0]], epoch_info=(epoch, EPOCHS))
-
             mlflow.log_metrics(train_metrics[0], step=epoch)
             mlflow.log_metrics(val_metrics[0], step=epoch)
 
             # Checking for early stopping
-            if no_improvements >= PATIENCE:
+            if patience >= PATIENCE:
                 print(f"Epoch {epoch+1:3d}/{EPOCHS} │ No improvements for {PATIENCE} epochs. Stopping")
                 break
         
@@ -522,13 +511,10 @@ if __name__ == "__main__":
             metrics=["avg_loss", "accuracy", "f1", "conf_mat"]
         )
 
-        # [batch_size, sequence_length, features]
-        dummy_input = torch.randn(1, 84, requires_grad=False).to(DEVICE)
-
         # Export to ONNX
         torch.onnx.export(
             model,
-            dummy_input,
+            model_example_input.to(DEVICE),
             "./data/models/gesture_transformer.onnx",
             export_params=True,
             opset_version=18,
@@ -539,7 +525,6 @@ if __name__ == "__main__":
 
         # Logging test metrics
         log_metrics([test_metrics[0]], epoch_info=(EPOCHS+1, EPOCHS))
-
         mlflow.log_metrics(test_metrics[0])
 
         # Saving best model
@@ -548,4 +533,3 @@ if __name__ == "__main__":
 
         # Confussion matrix
         mlflow.log_figure(test_metrics[1]["test_conf_mat"], "confusion_matrix.png")
-        plt.close(test_metrics[1]["test_conf_mat"])
