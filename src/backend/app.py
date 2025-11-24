@@ -19,8 +19,9 @@ class GestureRecognizer:
     def __init__(self, model_path: str):
         self.session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
         self.input_name = self.session.get_inputs()[0].name
+        lab2id = pd.read_csv("./data/processed/labels.csv")
         
-        self.idx2label = pd.read_csv("./data/processed/labels.csv")["0"].tolist()
+        self.idx2label = dict(zip(lab2id["id"], lab2id["label"]))
         
         self.hands = mp.solutions.hands.Hands(
             static_image_mode=False,
