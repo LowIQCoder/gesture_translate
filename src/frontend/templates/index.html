@@ -1,103 +1,103 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Распознавание жестов - Веб-приложение</title>
+    <title>Gesture Recognition - Web Application</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Распознавание жестов</h1>
-            <p>Веб-приложение для распознавания жестов в реальном времени</p>
+            <h1>Gesture Recognition</h1>
+            <p>Real-time gesture recognition web application</p>
         </div>
 
         <div class="main-content">
-            <!-- Левая панель - камера -->
+            <!-- Left panel - camera -->
             <div class="camera-section">
                 <div class="camera-container">
                     <video id="videoElement" autoplay muted playsinline></video>
                     <div class="camera-overlay">
                         <span id="statusIndicator" class="status-indicator status-offline"></span>
-                        <span id="statusText">Камера неактивна</span>
+                        <span id="statusText">Camera inactive</span>
                     </div>
                 </div>
                 
                 <div class="controls">
-                    <button id="startBtn" class="btn">🎥 Запустить камеру</button>
-                    <button id="stopBtn" class="btn" disabled>⏹️ Остановить</button>
+                    <button id="startBtn" class="btn">🎥 Start Camera</button>
+                    <button id="stopBtn" class="btn" disabled>⏹️ Stop</button>
                 </div>
             </div>
 
-            <!-- Правая панель - информация -->
+            <!-- Right panel - information -->
             <div class="info-panel">
-                <!-- Статистика -->
+                <!-- Statistics -->
                 <div class="stats-section">
-                    <h3>📊 Статистика</h3>
+                    <h3>📊 Statistics</h3>
                     <div class="stat-item">
                         <span class="stat-label">FPS:</span>
                         <span class="stat-value" id="fps">0</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">Время обработки:</span>
+                        <span class="stat-label">Processing time:</span>
                         <span class="stat-value" id="inference">0ms</span>
                     </div>
                     <div class="stat-item">
-                        <span class="stat-label">Предобработка:</span>
+                        <span class="stat-label">Preprocessing:</span>
                         <span class="stat-value" id="preprocessing">0ms</span>
                     </div>
                 </div>
 
-                <!-- Результаты распознавания -->
+                <!-- Recognition results -->
                 <div class="results-section">
-                    <h3>🎯 Результаты</h3>
+                    <h3>🎯 Results</h3>
                     <div class="gesture-display">
-                        <div class="gesture-text" id="gesture">Символ: Не обнаружен</div>
-                        <div class="confidence-text" id="confidence">Уверенность: 0%</div>
+                        <div class="gesture-text" id="gesture">Symbol: Not detected</div>
+                        <div class="confidence-text" id="confidence">Confidence: 0%</div>
                     </div>
                 </div>
 
-                <!-- Предсказания -->
+                <!-- Predictions -->
                 <div class="embeddings-section">
-                    <h4>🔮 Топ-3 предсказания</h4>
+                    <h4>🔮 Top-3 predictions</h4>
                     <div class="embeddings-list" id="embeddingsList">
-                        <div class="loading">Загрузка...</div>
+                        <div class="loading">Loading...</div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Информация о приложении -->
+        <!-- Application information -->
         <div class="info-section" style="background: white; border-radius: 15px; padding: 20px; margin-top: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-            <h3 style="color: #667eea; margin-bottom: 15px;">ℹ️ Информация о приложении</h3>
+            <h3 style="color: #667eea; margin-bottom: 15px;">ℹ️ Application Information</h3>
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
                 <div>
-                    <h4 style="color: #333; margin-bottom: 10px;">🎯 Возможности</h4>
+                    <h4 style="color: #333; margin-bottom: 10px;">🎯 Features</h4>
                     <ul style="color: #666; line-height: 1.6;">
-                        <li>Распознавание жестов в реальном времени</li>
-                        <li>Поддержка обеих рук</li>
-                        <li>Высокая точность распознавания</li>
-                        <li>Статистика производительности</li>
+                        <li>Real-time gesture recognition</li>
+                        <li>Dual hand support</li>
+                        <li>High recognition accuracy</li>
+                        <li>Performance statistics</li>
                     </ul>
                 </div>
                 <div>
-                    <h4 style="color: #333; margin-bottom: 10px;">🔧 Технологии</h4>
+                    <h4 style="color: #333; margin-bottom: 10px;">🔧 Technologies</h4>
                     <ul style="color: #666; line-height: 1.6;">
-                        <li>MediaPipe для детекции рук</li>
-                        <li>ONNX Runtime для инференса</li>
-                        <li>Flask для backend</li>
-                        <li>WebRTC для камеры</li>
+                        <li>MediaPipe for hand detection</li>
+                        <li>ONNX Runtime for inference</li>
+                        <li>Flask for backend</li>
+                        <li>WebRTC for camera</li>
                     </ul>
                 </div>
                 <div>
-                    <h4 style="color: #333; margin-bottom: 10px;">📋 Инструкции</h4>
+                    <h4 style="color: #333; margin-bottom: 10px;">📋 Instructions</h4>
                     <ul style="color: #666; line-height: 1.6;">
-                        <li>Разрешите доступ к камере</li>
-                        <li>Покажите руки в кадр</li>
-                        <li>Дождитесь распознавания</li>
-                        <li>Следите за статистикой</li>
+                        <li>Allow camera access</li>
+                        <li>Show hands in frame</li>
+                        <li>Wait for recognition</li>
+                        <li>Monitor statistics</li>
                     </ul>
                 </div>
             </div>

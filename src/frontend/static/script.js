@@ -65,11 +65,11 @@ class GestureWebApp {
 
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
-            this.updateStatus("Камера активна", "online");
+            this.updateStatus("Camera is active", "online");
 
         } catch (err) {
-            this.updateStatus("Ошибка камеры", "offline");
-            this.showError("Не удалось получить доступ к камере");
+            this.updateStatus("Camera error", "offline");
+            this.showError("Could not initialize camera");
             console.error(err);
         }
     }
@@ -88,7 +88,7 @@ class GestureWebApp {
         this.isStreaming = false;
         this.video.srcObject = null;
 
-        this.updateStatus("Камера остановлена", "offline");
+        this.updateStatus("Camera stopped", "offline");
         this.startBtn.disabled = false;
         this.stopBtn.disabled = true;
 
@@ -141,8 +141,8 @@ class GestureWebApp {
     handleServerResult(result) {
         // Handle no hands detected case
         if (result.status === 'no_hands_detected') {
-            this.gestureDisplay.textContent = "Жест: Руки не обнаружены";
-            this.confidenceDisplay.textContent = "Уверенность: 0%";
+            this.gestureDisplay.textContent = "Gesture: No Hands detected";
+            this.confidenceDisplay.textContent = "Accuracy: 0%";
             this.embeddingsList.innerHTML = "";
             return;
         }
@@ -167,8 +167,8 @@ class GestureWebApp {
             this.preprocessingDisplay.textContent = result.preprocessing_time.toFixed(1) + "ms";
 
         // Gesture
-        this.gestureDisplay.textContent = "Жест: " + result.gesture;
-        this.confidenceDisplay.textContent = "Уверенность: " + result.confidence.toFixed(1) + "%";
+        this.gestureDisplay.textContent = "Gesture: " + result.gesture;
+        this.confidenceDisplay.textContent = "Probability: " + result.confidence.toFixed(1) + "%";
 
         // Predictions
         this.updatePredictions(result.embeddings || []);
@@ -189,8 +189,8 @@ class GestureWebApp {
     }
 
     clearResults() {
-        this.gestureDisplay.textContent = "Жест: Не обнаружен";
-        this.confidenceDisplay.textContent = "Уверенность: 0%";
+        this.gestureDisplay.textContent = "Gesture: Not Detected";
+        this.confidenceDisplay.textContent = "Probability: 0%";
         this.inferenceDisplay.textContent = "0ms";
         this.preprocessingDisplay.textContent = "0ms";
 
@@ -218,7 +218,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const app = new GestureWebApp();
 
     if (!navigator.mediaDevices?.getUserMedia) {
-        app.showError("Ваш браузер не поддерживает камеру");
+        app.showError("Your browser does not support cam");
         document.getElementById("startBtn").disabled = true;
     }
 });
