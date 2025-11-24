@@ -355,7 +355,7 @@ if __name__ == "__main__":
     MAX_LEARNING_RATE = 1e-5
     WEIGHT_DECAY = 1e-2
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    EPOCHS = 100
+    EPOCHS = 150
     PATIENCE = 10
     BATCH_SIZE = 512
     SEED = 42

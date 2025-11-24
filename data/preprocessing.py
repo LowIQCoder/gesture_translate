@@ -90,6 +90,12 @@ def random_translate(gesture):
         frame[42:84] += y_translate
     return new_gesture
 
+def random_scale(gesture):
+    scale_factor = np.random.rand()
+    scaled_gesture = gesture * scale_factor
+    
+    return scaled_gesture
+
 def preprocess_slovo_dataset(
         dataset_path: str | PathLike,
         out_path: str | PathLike,
@@ -294,8 +300,10 @@ def preprocess_asl_dataset(
 
             noised = add_noise(features, 0.1, 0.05)
             moved = random_translate(features)
+            scaled = random_scale(features)
             train_df.loc[len(train_df)] = ({"features": noised, "label": lab2id[label]})
             train_df.loc[len(train_df)] = ({"features": moved, "label": lab2id[label]})
+            train_df.loc[len(train_df)] = ({"features": scaled, "label": lab2id[label]})
 
         for path in tqdm(val_paths, desc=f"Preprocessing Label {label} Val"):
             features = preprocess_image(path, hands_model)
