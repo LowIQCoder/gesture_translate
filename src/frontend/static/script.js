@@ -1,4 +1,4 @@
-// JavaScript for gesture recognition web app (optimized version)
+// JavaScript for gesture recognition web app (single frame version)
 class GestureWebApp {
     constructor() {
         this.video = null;
@@ -9,11 +9,8 @@ class GestureWebApp {
         this.isProcessing = false;
 
         this.stream = null;
-        this.sendInterval = null;      // 🔥 send frames on timer, not per-frame
-        this.sendFPS = 60;             // 🔥 send only 10 frames/sec
-        this.requiredFrames = 120;
-
-        this.frams = 0
+        this.sendInterval = null;
+        this.sendFPS = 10;  // Reduced FPS since we're processing every frame
 
         this.initializeElements();
         this.setupEventListeners();
@@ -60,13 +57,11 @@ class GestureWebApp {
             this.video.srcObject = this.stream;
             this.isStreaming = true;
 
-            this.video.addEventListener("loadedmetadata", async () => {
+            this.video.addEventListener("loadedmetadata", () => {
                 this.canvas.width = this.video.videoWidth;
                 this.canvas.height = this.video.videoHeight;
-                await this.resetServerBuffer();   // wait for buffer reset
-                this.startFrameSending();          // start sending frames
+                this.startFrameSending();  // Start sending frames immediately
             });
-
 
             this.startBtn.disabled = true;
             this.stopBtn.disabled = false;
@@ -100,26 +95,19 @@ class GestureWebApp {
         this.clearResults();
     }
 
-    async resetServerBuffer() {
-        try {
-            await fetch("http://localhost:8000/api/reset_buffer", { method: "POST" });
-            console.log("Server buffer reset.");
-        } catch (err) {
-            console.error("Reset buffer error:", err);
-        }
-    }
-
     startFrameSending() {
         if (this.sendInterval) return;
 
         const intervalMs = 1000 / this.sendFPS;
 
         this.sendInterval = setInterval(() => this.captureAndSendFrame(), intervalMs);
-        console.log(`🔥 Sending frames every ${intervalMs} ms (${this.sendFPS} FPS)`);
+        console.log(`Sending frames every ${intervalMs} ms (${this.sendFPS} FPS)`);
     }
 
     async captureAndSendFrame() {
-        if (!this.isStreaming) return;
+        if (!this.isStreaming || this.isProcessing) return;
+
+        this.isProcessing = true;
 
         // Draw current frame
         this.ctx.drawImage(this.video, 0, 0, this.canvas.width, this.canvas.height);
@@ -135,29 +123,44 @@ class GestureWebApp {
                 body: JSON.stringify({ frame: frameData })
             });
 
-            if (!response.ok) return;
+            if (!response.ok) {
+                this.isProcessing = false;
+                return;
+            }
 
             const result = await response.json();
             this.handleServerResult(result);
 
         } catch (err) {
             console.error("Frame send error:", err);
+        } finally {
+            this.isProcessing = false;
         }
     }
 
     handleServerResult(result) {
-        if (result.buffer_size !== undefined) {
-            console.log(`Buffer: ${result.buffer_size}/${this.requiredFrames}`);
+        // Handle no hands detected case
+        if (result.status === 'no_hands_detected') {
+            this.gestureDisplay.textContent = "Жест: Руки не обнаружены";
+            this.confidenceDisplay.textContent = "Уверенность: 0%";
+            this.embeddingsList.innerHTML = "";
+            return;
         }
 
-        if (result.gesture !== undefined && result.gesture !== null) {
+        // Handle error case
+        if (result.error) {
+            console.error("Server error:", result.error);
+            return;
+        }
+
+        // Update UI with prediction results
+        if (result.gesture !== undefined) {
             this.updateUI(result);
         }
     }
 
     updateUI(result) {
         // Stats
-        if (result.fps !== undefined) this.fpsDisplay.textContent = result.fps;
         if (result.inference_time !== undefined)
             this.inferenceDisplay.textContent = result.inference_time.toFixed(1) + "ms";
         if (result.preprocessing_time !== undefined)
@@ -188,7 +191,6 @@ class GestureWebApp {
     clearResults() {
         this.gestureDisplay.textContent = "Жест: Не обнаружен";
         this.confidenceDisplay.textContent = "Уверенность: 0%";
-        this.fpsDisplay.textContent = "0";
         this.inferenceDisplay.textContent = "0ms";
         this.preprocessingDisplay.textContent = "0ms";
 

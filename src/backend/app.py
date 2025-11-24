@@ -28,13 +28,9 @@ class GestureRecognizer:
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
-        
-        self.frame_buffer = []
-        self.sequence_length = 120
-        self.feature_size = 84
 
     def process_frame(self, frame_data: str) -> dict:
-        """Process single frame and add to buffer"""
+        """Process single frame and return prediction"""
         try:
             # Decode base64 image
             image_data = base64.b64decode(frame_data.split(',')[1])
@@ -44,6 +40,8 @@ class GestureRecognizer:
             if frame is None:
                 return {'error': 'Failed to decode image'}
             
+            preprocessing_start = time.time()
+
             # Process with MediaPipe
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = self.hands.process(rgb_frame)
@@ -51,65 +49,47 @@ class GestureRecognizer:
             # Extract features
             features = landmarks_to_features(results)
             
-            # Add to buffer (ensure correct shape)
-            if features is not None and len(features) == self.feature_size:
-                self.frame_buffer.append(features)
-                
-                # Keep only last 120 frames
-                if len(self.frame_buffer) > self.sequence_length:
-                    self.frame_buffer.pop(0)
-                
-                return {'status': 'frame_added', 'buffer_size': len(self.frame_buffer)}
-            else:
-                return {'status': 'no_hands_detected', 'buffer_size': len(self.frame_buffer)}
+            if features is None:
+                return {'status': 'no_hands_detected'}
+            
+            # Ensure features are the right shape for model (batch_size, features)
+            input_tensor = np.expand_dims(np.array(features, dtype=np.float32), axis=0)
+
+            preprocessing_time = (time.time() - preprocessing_start) * 1000
+
+            # Run inference
+            inference_start = time.time()
+            outputs = self.session.run(None, {self.input_name: input_tensor})
+            inference_time = (time.time() - inference_start) * 1000
+
+            # Process outputs
+            logits = outputs[0]
+            if logits.ndim == 2 and logits.shape[0] == 1:
+                logits = logits[0]  # remove batch dim
+
+            # Softmax
+            exp_logits = np.exp(logits - np.max(logits))  # for numerical stability
+            probs = exp_logits / np.sum(exp_logits)
+
+            # Prediction
+            pred_idx = int(np.argmax(probs))
+            pred_label = self.idx2label[pred_idx]
+            confidence = float(probs[pred_idx] * 100)
+
+            # Top-3 predictions
+            top_indices = np.argsort(probs)[-3:][::-1]
+            top_predictions = [(self.idx2label[idx], float(probs[idx] * 100)) for idx in top_indices]
+
+            return {
+                'gesture': pred_label,
+                'confidence': confidence,
+                'embeddings': top_predictions,
+                'preprocessing_time': preprocessing_time,
+                'inference_time': inference_time
+            }
                 
         except Exception as e:
             return {'error': str(e)}
-
-    def predict_gesture(self) -> dict:
-        """Run inference when buffer is full"""
-        if len(self.frame_buffer) < self.sequence_length:
-            return {'error': f'Not enough frames. Need {self.sequence_length}, have {len(self.frame_buffer)}'}
-
-        preprocessing_start = time.time()
-
-        # Convert frame buffer to [batch, seq_len, feature_size]
-        input_tensor = np.expand_dims(np.array(self.frame_buffer, dtype=np.float32), axis=0)
-
-        preprocessing_time = (time.time() - preprocessing_start) * 1000
-
-        # Run inference
-        inference_start = time.time()
-        outputs = self.session.run(None, {self.input_name: input_tensor})
-        inference_time = (time.time() - inference_start) * 1000
-
-        # ONNX model should output logits for all classes: shape [num_classes] or [1, num_classes]
-        logits = outputs[0]
-        if logits.ndim == 2 and logits.shape[0] == 1:
-            logits = logits[0]  # remove batch dim
-
-        # Softmax
-        exp_logits = np.exp(logits - np.max(logits))  # for numerical stability
-        probs = exp_logits / np.sum(exp_logits)
-
-        # Prediction
-        pred_idx = int(np.argmax(probs))
-        pred_label = self.idx2label[pred_idx]
-        confidence = float(probs[pred_idx] * 100)
-
-        # Top-3 predictions
-        top_indices = np.argsort(probs)[-3:][::-1]
-        top_predictions = [(self.idx2label[idx], float(probs[idx] * 100)) for idx in top_indices]
-
-        self.frame_buffer = []
-
-        return {
-            'gesture': pred_label,
-            'confidence': confidence,
-            'embeddings': top_predictions,
-            'preprocessing_time': preprocessing_time,
-            'inference_time': inference_time
-        }
 
 
 # Initialize recognizer
@@ -117,37 +97,17 @@ recognizer = GestureRecognizer("./data/models/gesture_transformer.onnx")
 
 @app.route('/api/process_frame', methods=['POST'])
 def process_frame():
-    """Add frame to buffer and predict if sequence is complete"""
+    """Process single frame and return prediction"""
     data = request.get_json()
     frame_data = data.get('frame')
     
     if not frame_data:
         return jsonify({'error': 'No frame data provided'}), 400
     
-    # Process frame and add to buffer
+    # Process frame and get prediction
     result = recognizer.process_frame(frame_data)
     
-    # If buffer is full, run prediction
-    print(f"Buffer  {len(recognizer.frame_buffer)}")
-    if recognizer.frame_buffer and len(recognizer.frame_buffer) == recognizer.sequence_length:
-        prediction = recognizer.predict_gesture()
-        result.update(prediction)
-    
     return jsonify(result)
-
-@app.route('/api/reset_buffer', methods=['POST'])
-def reset_buffer():
-    """Reset the frame buffer"""
-    recognizer.frame_buffer.clear()
-    return jsonify({'status': 'buffer_cleared'})
-
-@app.route('/api/buffer_status', methods=['GET'])
-def buffer_status():
-    """Get current buffer status"""
-    return jsonify({
-        'buffer_size': len(recognizer.frame_buffer),
-        'required_size': recognizer.sequence_length
-    })
 
 @app.route('/health', methods=['GET'])
 def health():

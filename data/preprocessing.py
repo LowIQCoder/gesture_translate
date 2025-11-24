@@ -16,6 +16,9 @@ from pathlib import Path
 
 from data.features import landmarks_to_features
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, message=".*SymbolDatabase.GetPrototype.*")
+
 def preprocess_image(image_path: PathLike, hands_model=None):
     """Preprocess the image for hand tracking and return landmark features.
 
@@ -288,6 +291,11 @@ def preprocess_asl_dataset(
             # TODO Add data augmentations
             features = preprocess_image(path, hands_model)
             train_df.loc[len(train_df)] = ({"features": features, "label": lab2id[label]})
+
+            noised = add_noise(features, 0.1, 0.05)
+            moved = random_translate(features)
+            train_df.loc[len(train_df)] = ({"features": noised, "label": lab2id[label]})
+            train_df.loc[len(train_df)] = ({"features": moved, "label": lab2id[label]})
 
         for path in tqdm(val_paths, desc=f"Preprocessing Label {label} Val"):
             features = preprocess_image(path, hands_model)

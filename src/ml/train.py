@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import logging
 from src.ml.dataloaders import get_dataloaders
-from src.ml.model import GestureTransformer
+from src.ml.model import GestureModel
 from torchinfo import summary
 import json
 import random
@@ -343,10 +343,10 @@ def test_epoch(
 if __name__ == "__main__":
     # Model params
     NUM_CLASSES = 35
-    DIM_MODEL = 128
-    DIM_FF = 256
-    NUM_ENCODERS = 6
-    NUM_HEADS = 8   
+    DIM_MODEL = 84
+    DIM_FF = 128
+    NUM_ENCODERS = 4
+    NUM_HEADS = 4   
     DROPOUT = 0.3
 
     # Training params
@@ -355,9 +355,9 @@ if __name__ == "__main__":
     MAX_LEARNING_RATE = 1e-5
     WEIGHT_DECAY = 1e-2
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    EPOCHS = 300 
+    EPOCHS = 100
     PATIENCE = 10
-    BATCH_SIZE = 64
+    BATCH_SIZE = 512
     SEED = 42
 
     # Fixing random
@@ -367,14 +367,13 @@ if __name__ == "__main__":
     train_loader, val_loader, test_loader = get_dataloaders("./data/processed/", BATCH_SIZE)
 
     # Model
-    model = GestureTransformer(
+    model = GestureModel(
         num_classes=NUM_CLASSES,
         d_model=DIM_MODEL,
-        d_ff=DIM_FF,
-        num_encoders=NUM_ENCODERS,
-        nheads=NUM_HEADS,       
+        d_hidden=DIM_FF,    
         dropout=DROPOUT
     ).to(DEVICE)
+
     optimizer = optim.AdamW(
         params=model.parameters(),
         lr=INIT_LEARNING_RATE,
@@ -433,15 +432,13 @@ if __name__ == "__main__":
         model_info = mlflow.pytorch.log_model(
             model,
             name="model",
-            registered_model_name="GestureTransformer",
+            registered_model_name="GestureModel",
             pip_requirements="requirements.txt",
             await_registration_for=0,
             params={
                 "num_classes": str(NUM_CLASSES),
                 "d_model": str(DIM_MODEL),
-                "d_ff": str(DIM_FF),
-                "num_encoders": str(NUM_ENCODERS),
-                "n_heads": str(NUM_HEADS),
+                "d_hidden": str(DIM_FF),
                 "dropout": str(DROPOUT)
             },
             input_example=np.zeros((1, 84), dtype=np.float32)
@@ -453,12 +450,10 @@ if __name__ == "__main__":
 
         with open("./data/models/model_configuration.json", "w", encoding="utf-8") as f:
             json.dump({
-                "num_classes": NUM_CLASSES,
-                "d_model": DIM_MODEL,
-                "d_ff": DIM_FF,
-                "num_encoders": NUM_ENCODERS,
-                "nheads": NUM_HEADS,
-                "dropout": DROPOUT
+                "num_classes": str(NUM_CLASSES),
+                "d_model": str(DIM_MODEL),
+                "d_hidden": str(DIM_FF),
+                "dropout": str(DROPOUT)
             }, f)
 
         mlflow.log_artifact("./data/models/model_summary.txt")
@@ -528,7 +523,7 @@ if __name__ == "__main__":
         )
 
         # [batch_size, sequence_length, features]
-        dummy_input = torch.randn(1, 84, requires_grad=False)
+        dummy_input = torch.randn(1, 84, requires_grad=False).to(DEVICE)
 
         # Export to ONNX
         torch.onnx.export(
