@@ -9,60 +9,47 @@ This directory contains all data-related assets for the project, organized follo
 ```
 data/
 ├── raw/                      # Original, immutable raw data
-│   ├── annotations.csv       # Labels and annotations
-│   └── solvo_mediapipe.json  # Raw dataset from MediaPipe
+│   └── data/                 # Folder with images
+│       ├── 1
+│       ├── 2
+│       ├── ...
+│       └── Z
 │
-├── processed/                # Cleaned and processed data
-│   ├── train.parquet         # Training split
-│   ├── val.parquet           # Validation split
-│   └── test.parquet          # Test split
+├── processed/                    # Cleaned and processed data
+│   ├── train.parquet             # Training split
+│   ├── val.parquet               # Validation split
+│   └── test.parquet              # Test split
 │
-├── preview/                 # Data exploration and visualization
-│   ├── preview.ipynb         # Jupyter notebook for data preview
-│   └── *.gif                 # Data visualization samples
+├── preview/                      # Data exploration and visualization
+│   ├── preview.ipynb             # Jupyter notebook for data preview
+│   └── *.jpg                     # Data visualization samples
 │
-├──  models/                  # Model artifacts and configurations
-│   ├── best_model.pth        # Best model checkpoint
-│   ├── model_configuration/  # Best model configuration files
-│   └── model_summary.txt     # Model architecture summary
+├──  models/                      # Model artifacts and configurations
+│   ├── best_model.pth            # Best model checkpoint
+│   ├── model_configuration.json  # Best model configuration files
+│   └── model_summary.txt         # Model architecture summary
 │
-├── preprocessing.py          # Data preprocessing scripts
-└── features.py               # Feature engineering utilities
+├── preprocessing.py             # Data preprocessing scripts
+└── features.py                  # Feature engineering utilities
 ```
-
-## 🗂️ Contents Description
-
-### Raw Data (`raw/`)
-- **Purpose**: Original source data - do not modify directly
-- **Files**:
-  - `annotations.csv`: Contains all labels and annotations
-  - `solvo_mediapipe.json`: Raw MediaPipe output data
-
-### Processed Data (`processed/`)
-- **Purpose**: Cleaned, split, and ready-to-use datasets
-- **Format**: Parquet files for efficient storage
-- **Splits**:
-  - Training set (`train.parquet`)
-  - Validation set (`val.parquet`) 
-  - Test set (`test.parquet`)
-
-### Preview (`preview/`)
-- **Purpose**: Data exploration and visualization
-- **Files**:
-  - `preview.ipynb`: Interactive notebook for data analysis
-  - GIF files: Visual representations of the dataset
-
-### Models (`models/`)
-- **Purpose**: Trained model artifacts and configurations
-- **Files**:
-  - `best_model.pth`: PyTorch model checkpoint
-  - `model_configuration/`: Model hyperparameters and settings
-  - `model_summary.txt`: Architecture overview
 
 ## 🔧 Scripts
 
 ### `preprocessing.py`
 Contains data cleaning, transformation, and preparation pipelines.
 
+To run use
+```bash
+python -m data.preprocessing # Automatically downloads and preprocess dataset
+```
+
+Or specify path to downloaded dataset
+In case you have dataset downloaded
+```bash
+python -m data.preprocessing ./data/raw/data # Note that data contains folders 1, 2, 3 ...
+```
+
 ### `features.py`
 Includes feature engineering utilities and data transformation functions.
+
+Each feature vector is a **(,84)** dim vector, with stacked **x** and **y** coordinates of both hands. All features are normalized.

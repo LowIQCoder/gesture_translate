@@ -13,35 +13,58 @@ class GestureModel(nn.Module):
     ):
         super().__init__()
         
+        self.d_model = d_model
+
         # Treat the 84 landmarks as a 1D sequence
         self.convs = nn.Sequential(
             # Input: (batch, 1, 84)
             nn.Conv1d(1, 32, kernel_size=5, stride=1, padding=2),
+            nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.MaxPool1d(2),  # 84  42
+            nn.MaxPool1d(2),  # 84 42
             
             nn.Conv1d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
-            nn.MaxPool1d(2),  # 42  21
-            
+            nn.MaxPool1d(2),  # 42 21
+
             nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
-            nn.AdaptiveAvgPool1d(1)  # 21 1
+            
+            nn.Conv1d(128, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.MaxPool1d(2),  # 21 10
+            
+            nn.Conv1d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            
+            nn.AdaptiveAvgPool1d(1)  # 10 1
         )
         
         self.classifier = nn.Sequential(
-            nn.Linear(128, d_hidden),
+            nn.Linear(256 + self.d_model, d_hidden),
+            nn.BatchNorm1d(d_hidden),
             nn.ReLU(),
             nn.Dropout(dropout),
+            
+            nn.Linear(d_hidden, d_hidden),
+            nn.BatchNorm1d(d_hidden),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
             nn.Linear(d_hidden, num_classes)
         )
     
-    def forward(self, x):
+    def forward(self, x_skip):
         # x shape: (batch_size, 84)
-        x = x.unsqueeze(1)  # Add channel dimension: (batch_size, 1, 84)
+        x = x_skip.unsqueeze(1)  # Add channel dimension: (batch_size, 1, 84)
         x = self.convs(x)   # (batch_size, 128, 1)
         x = x.view(x.size(0), -1)  # (batch_size, 128)
-        x = self.classifier(x)  # (batch_size, num_classes)
+
+        x = self.classifier(torch.cat([x, x_skip], dim=1))  # Concatenate along feature dimension
         return x
 
 if __name__ == "__main__":

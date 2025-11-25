@@ -43,6 +43,33 @@ def preprocess_image(image_path: os.PathLike, hands_model=None):
 
     return landmarks_to_features(results)
 
+def horizontal_flip(gesture: np.ndarray) -> np.ndarray:
+    """Horizontally flip gesture and swap hand positions.
+
+    After flipping, what was right hand becomes left hand and vice versa.
+
+    Args:
+        gesture (np.ndarray): Array of features
+
+    Returns:
+        np.ndarray: Horizontally flipped features with hands swapped
+    """
+    flipped_gesture = np.zeros_like(gesture)
+    
+    # Copy and flip right hand to left hand position
+    if not np.allclose(gesture[0:21], 0):  # If right hand exists
+        # Flip x-coordinates and place in left hand section
+        flipped_gesture[42:63] = 1 - gesture[0:21]    # x-coords
+        flipped_gesture[63:84] = gesture[21:42]       # y-coords (unchanged)
+    
+    # Copy and flip left hand to right hand position
+    if not np.allclose(gesture[42:63], 0):  # If left hand exists
+        # Flip x-coordinates and place in right hand section
+        flipped_gesture[0:21] = 1 - gesture[42:63]    # x-coords
+        flipped_gesture[21:42] = gesture[63:84]       # y-coords (unchanged)
+    
+    return flipped_gesture
+
 def add_noise(
         gesture:np.ndarray, 
         mean: float,
@@ -168,6 +195,15 @@ def preprocess_asl_dataset(
     mp_hands = mp.solutions.hands
     hands_model = mp_hands.Hands(static_image_mode=True, max_num_hands=2)
     
+    # Used augmentations
+    augmentations = [
+        lambda x: x,
+        lambda x: add_noise(x, 0.1, 0.02),
+        lambda x: random_translate(x),
+        lambda x: random_scale(x),
+        lambda x: random_rotate(x)
+    ]
+
     # Preprocessiing images
     train_df = pd.DataFrame(columns=["features", "label"])
     val_df = pd.DataFrame(columns=["features", "label"])
@@ -194,29 +230,25 @@ def preprocess_asl_dataset(
             random_state=42
         )
 
-        # Preprocess images and store results
         for path in tqdm(train_paths, desc=f"Preprocessing Label {label} Train"):
-            # TODO Add data augmentations
             features = preprocess_image(path, hands_model)
-            train_df.loc[len(train_df)] = ({"features": features, "label": lab2id[label]})
 
-            for _ in range(4):
-                noised = add_noise(features, 0.1, 0.015)
-                moved = random_translate(features)
-                scaled = random_scale(features)
-                rotated = random_rotate(features)
-
-                train_df.loc[len(train_df)] = ({"features": noised, "label": lab2id[label]})
-                train_df.loc[len(train_df)] = ({"features": moved, "label": lab2id[label]})
-                train_df.loc[len(train_df)] = ({"features": scaled, "label": lab2id[label]})
-                train_df.loc[len(train_df)] = ({"features": rotated, "label": lab2id[label]})
+            for aug_func in augmentations:
+                augmented = aug_func(features)
+                augmented_flipped = horizontal_flip(augmented)
+                
+                train_df.loc[len(train_df)] = ({"features": augmented, "label": lab2id[label]})
+                train_df.loc[len(train_df)] = ({"features": augmented_flipped, "label": lab2id[label]})
 
         for path in tqdm(val_paths, desc=f"Preprocessing Label {label} Val"):
             features = preprocess_image(path, hands_model)
+            
             val_df.loc[len(val_df)] = ({"features": features, "label": lab2id[label]})
+            val_df.loc[len(val_df)] = ({"features": horizontal_flip(features), "label": lab2id[label]})
 
         for path in tqdm(test_paths, desc=f"Preprocessing Label {label} Test"):
             features = preprocess_image(path, hands_model)
+            
             test_df.loc[len(test_df)] = ({"features": features, "label": lab2id[label]})
 
     test_df.to_parquet(os.path.join(final_path, "test.parquet"), index=False)

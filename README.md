@@ -6,23 +6,12 @@ Optimized application for automatic translating from **(ASL)** to English Langua
 
 ## 📖 Table of Contents
 
-* [🚀 Key Features](#-key-features)
 * [🌍 Dataset & Preprocessing](#-dataset--preprocessing)
 * [⚙️ Installation](#️-installation)
 * [🧪 Usage](#-usage)
-* [🗺️ Roadmap](#️-roadmap)
 * [📈 Methodology](#-methodology)
-* [📊 Evaluation Metrics](#-evaluation-metrics)
 * [👥 Team](#-team)
 * [📜 License](#-license)
-
----
-
-## 🚀 Key Features
-
-* **Deep Neural Network (DNN)** for accurate sign classification
-* **Complex gesture recognition** using hand landmarks & sequence modeling
-* **Highly optimized** client-server architecture for real-time inference
 
 ---
 
@@ -30,13 +19,10 @@ Optimized application for automatic translating from **(ASL)** to English Langua
 
 We use the "Sign Language
 Detection Using Images" dataset from [kaggle](https://www.kaggle.com/datasets/harshvardhan21/sign-language-detection-using-images).
-This dataset was chosen for its large volume of curated image samples, which is crucial for effective deep learning training.
 
 * Input: raw RGB frames from webcam
 * Feature Extraction: using  for hand landmark detection
-* Gesture Classification: deep model trained on sequences of landmark vectors
-
-[▶️ View Preprocessing Code](ml/dataset.ipynb)
+* Gesture Classification: deep model trained on landmark vectors
 
 ---
 
@@ -65,25 +51,32 @@ This dataset was chosen for its large volume of curated image samples, which is 
 ## 🧪 Usage
 
 ### 📝 Data Preprocessing
-
-For correct work you must set `KAGGLEHUB_CACHE`
+If you want to look at model training process first of all get and preprocess data. If you do ton have dataset just run
 ```bash
-export KAGGLEHUB_CACHE=./data/raw
+python -m data.preprocessing # Automatically downloads and preprocess dataset
 ```
 
-If you want to look at model training process first of all get and preprocess data.
-
+In case you have dataset downloaded
 ```bash
-python -m data.preprocessing
+python -m data.preprocessing ./data/raw/data # Note that data contains folders 1, 2, 3 ...
 ```
 
-You will see 2 new folders
+After you will see 2 new folders
 
 ```
 . 
-└─── data
-    └─── raw         # Here you will have dataset from kaggle
-    └─── processed   # Here tou will have preprocessed features
+data/
+├── raw/                      # Original, immutable raw data
+│   └── data/                 # Folder with images
+│       ├── 1
+│       ├── 2
+│       ├── ...
+│       └── Z
+│
+├── processed/                # Cleaned and processed data
+│   ├── train.parquet         # Training split
+│   ├── val.parquet           # Validation split
+│   └── test.parquet          # Test split
 
 ```
 
@@ -94,7 +87,7 @@ Now with ready data you can train model
 To track model metrics we use [MLFlow](https://mlflow.org/). To do so, run tracking server with docker
 
 ```bash
-docker compose up --build
+docker compose up mlflow --build
 ```
 
 With MLFlow running, launch training script
@@ -109,27 +102,11 @@ Now access MLFlow UI on http://localhost:5000 to see model training process
 
 With trained model you can lauch our app
 
-To do so simply run our application
 ```bash
-python -m src.backend.app
+docker compose up --build
 ```
 
-And show somethig!
-
----
-
-## 🗺️ Roadmap
-
-**Planned timeline:**
-
-* Week 1–2: Literature review, requirements, dataset collection
-* Week 3: Build baseline MLP model
-* Week 4–5: Implement and train LSTM model
-* Week 6: Develop core application frontend
-* Week 7: Integrate trained model with backend
-* Week 8: Optimize model (quantization, pruning)
-* Week 9: System testing and evaluation
-* Week 10: Final report and release
+Now navigate to http://localhost:8080 and show gesture!
 
 ---
 
@@ -137,36 +114,12 @@ And show somethig!
 
 **Tech Stack**
 
-* **Python**— main development language
-* **OpenCV**— image preprocessing
-* **Mediapipe**— real-time hand landmark detection
-* **PyTorch**— model training and inference
-
-**Pipeline**
-
-1. Capture video frames
-2. Extract hand landmarks
-3. Classify sequences with a deep learning model
-4. Return predicted word as text/speech
-
----
-
-## 📊 Evaluation Metrics
-
-We will evaluate our model using:
-**Performance**
-
-* Top-1 and Top-5 Accuracy
-* Precision, Recall, F1-score
-* Confusion Matrix visualization
-
-**Efficiency**
-
-* Inference Time (latency) per frame
-* Model size (MB)
-
-**Target:** >90% accuracy with <33ms latency
-
+* **Python** - main development language
+* **OpenCV** - image preprocessing
+* **Mediapipe** - real-time hand landmark detection
+* **PyTorch** - model training
+* **Flask** - API server
+* **ONNX** - model inference
 ---
 
 ## 👥 Team
@@ -187,7 +140,6 @@ We will evaluate our model using:
 
 ## 📜 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-Innopolis — 2025
-
+Innopolis - 2025

@@ -39,4 +39,26 @@ def landmarks_to_features(detection_results):
             features[42:63] = x_coords
             features[63:84] = y_coords
 
-    return features
+        normalized = features.copy()
+        
+        # Right hand x-coordinates (0-20)
+        right_x = features[0:21]
+        if right_x.max() > right_x.min():
+            normalized[0:21] = (right_x - right_x.min()) / (right_x.max() - right_x.min())
+        
+        # Right hand y-coordinates (21-41)
+        right_y = features[21:42]
+        if right_y.max() > right_y.min():
+            normalized[21:42] = (right_y - right_y.min()) / (right_y.max() - right_y.min())
+        
+        # Left hand x-coordinates (42-62)
+        left_x = features[42:63]
+        if left_x.max() > left_x.min():
+            normalized[42:63] = (left_x - left_x.min()) / (left_x.max() - left_x.min())
+        
+        # Left hand y-coordinates (63-83)
+        left_y = features[63:84]
+        if left_y.max() > left_y.min():
+            normalized[63:84] = (left_y - left_y.min()) / (left_y.max() - left_y.min())
+
+    return normalized

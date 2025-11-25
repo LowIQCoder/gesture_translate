@@ -345,8 +345,8 @@ if __name__ == "__main__":
     params = {
         "num_classes": 35,
         "d_model": 84,
-        "d_hidden": 128,
-        "dropout": 0.3
+        "d_hidden": 512,
+        "dropout": 0.5
     }
 
     # Training params
@@ -355,7 +355,7 @@ if __name__ == "__main__":
     DIV_FACTOR = 10
     WEIGHT_DECAY = 1e-2
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    EPOCHS = 100
+    EPOCHS = 5
     PATIENCE = 10
     BATCH_SIZE = 512
     SEED = 42
