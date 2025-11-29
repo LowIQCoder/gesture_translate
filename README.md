@@ -34,7 +34,7 @@ Detection Using Images" dataset from [kaggle](https://www.kaggle.com/datasets/ha
    git clone https://github.com/LowIQCoder/gesture_translate.git
    cd gesture_translate
    ```
-   **NOTE that path to reposetory must NOT contain any CYRILLIC LETTERS**
+   **NOTE that path to repository must NOT contain any CYRILLIC LETTERS**
 2. Create and activate **Python 3.12** virtual environment:
 
    ```bash
