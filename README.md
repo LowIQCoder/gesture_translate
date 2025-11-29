@@ -34,6 +34,7 @@ Detection Using Images" dataset from [kaggle](https://www.kaggle.com/datasets/ha
    git clone https://github.com/LowIQCoder/gesture_translate.git
    cd gesture_translate
    ```
+   **NOTE that path to reposetory must NOT contain any CYRILLIC LETTERS**
 2. Create and activate **Python 3.12** virtual environment:
 
    ```bash
@@ -55,6 +56,8 @@ If you want to look at model training process first of all get and preprocess da
 ```bash
 python -m data.preprocessing # Automatically downloads and preprocess dataset
 ```
+
+**NOTE that by default on Windows system dataset will be installed at <USER_HOME>\.cache\kagglehub\datasets\. In case if path contains CYRILLIC LETTERS OpenCV will fail to open images**
 
 In case you have dataset downloaded
 ```bash
