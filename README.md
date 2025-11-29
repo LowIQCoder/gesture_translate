@@ -100,7 +100,7 @@ Now access MLFlow UI on http://localhost:5000 to see model training process
 
 ### 🚗 App Usage
 
-With trained model you can lauch our app
+With trained model you can lauch our frontend and backend
 
 ```bash
 docker compose up --build
