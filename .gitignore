@@ -223,3 +223,6 @@ __marimo__/
 .vscode
 logs
 data/raw
+data/processed
+data/models
+.dvc
