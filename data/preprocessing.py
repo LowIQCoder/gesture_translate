@@ -36,7 +36,7 @@ def preprocess_image(image_path: os.PathLike, hands_model=None):
     image_path = Path.absolute(Path(image_path))
     image = cv2.imread(str(image_path))
     if image is None:
-        raise ValueError(f"Image not found at {image_path}")
+        raise ValueError(f"Image not found at {image_path}\nPlease make shure that path contains only LATIN letters")
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     results = hands_model.process(image_rgb)
@@ -176,6 +176,9 @@ def preprocess_asl_dataset(
         dataset_path (str | os.PathLike): Path to raw files
         final_path (str | os.PathLike): Path to preprocessed files
     """
+    if not os.path.exists(final_path):
+        os.makedirs(final_path)
+    
     # Splitting ratios
     TRAIN_RATIO = 0.7
     VAL_RATIO = 0.15

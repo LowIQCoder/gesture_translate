@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-model_example_input = torch.rand((1, 84))
+model_example_input = torch.rand((1, 84), dtype=torch.float32)
 
 class GestureModel(nn.Module):
     def __init__(

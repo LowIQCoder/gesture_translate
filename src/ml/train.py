@@ -428,6 +428,7 @@ if __name__ == "__main__":
 
         # Logging model information
         model.to("cpu")
+        signature = mlflow.models.infer_signature(model_example_input.numpy().astype(np.float32))
         model_info = mlflow.pytorch.log_model(
             model,
             name="model",
@@ -435,7 +436,7 @@ if __name__ == "__main__":
             pip_requirements="requirements.txt",
             await_registration_for=0,
             params=params,
-            input_example=model_example_input.numpy()
+            signature=signature
         )
         model.to(DEVICE)
 
