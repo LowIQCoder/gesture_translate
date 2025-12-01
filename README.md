@@ -83,6 +83,26 @@ data/
 
 ```
 
+### 💿 DVC Setup
+This project uses DVC to manage large files like datasets and model checkpoints. To use it firslty define new dvc repo
+```
+pip install dvc dvc-gdrive
+dvc init
+```
+This will create .dvc directory.
+
+Now you will need to setup credentials. In case if you do not want do create your own contact @mrbrtg via telegram
+```bash
+dvc remote add -d myremote gdrive://<your-google-drive-folder-id>
+dvc remote modify myremote gdrive_client_id <your-client-id>
+dvc remote modify myremote gdrive_client_secret <your-client-secret>
+```
+
+After credentials setup pull files
+```bash
+dvc pull
+```
+
 ### 🏋️‍♂️ Model Training
 
 Now with ready data you can train model
