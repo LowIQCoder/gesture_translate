@@ -9,6 +9,7 @@ Optimized application for automatic translating from **(ASL)** to English Langua
 ## 📖 Table of Contents
 
 * [🌍 Dataset & Preprocessing](#-dataset--preprocessing)
+* [💿 DVC Setup](#-dvc-setup)
 * [⚙️ Installation](#️-installation)
 * [🧪 Usage](#-usage)
 * [📈 Methodology](#-methodology)
