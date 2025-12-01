@@ -2,6 +2,8 @@
 
 Optimized application for automatic translating from **(ASL)** to English Language
 
+![](./data/preview/alphabet.jpg)
+
 ---
 
 ## 📖 Table of Contents
