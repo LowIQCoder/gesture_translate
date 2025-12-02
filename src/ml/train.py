@@ -411,7 +411,7 @@ if __name__ == "__main__":
         print("No checkpoint found. Skipping")
 
     # Setting up mlflow
-    mlflow.set_tracking_uri("http://89.223.126.78:1333")
+    mlflow.set_tracking_uri("http://localhost:5000")
 
     with mlflow.start_run(log_system_metrics=True) as run:
         # Logging experement parameters
